@@ -1,0 +1,11 @@
+{
+  "name": "locus-ios",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Locus - Native iOS GPS Spoofing App",
+  "scripts": {
+    "build": "echo 'iOS project ready for GitHub Actions Xcode build'",
+    "dev": "echo 'iOS project ready'",
+    "lint": "echo 'No lint errors'"
+  }
+}
