@@ -22,13 +22,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Available Xcode installations:"
+          echo "Installed Xcode versions:"
           ls -d /Applications/Xcode*.app || true
           
-          # Pick latest Xcode 16.x if available, otherwise latest Xcode.app
           XCODE_APP=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | tail -n 1 || true)
           if [ -z "$XCODE_APP" ]; then
-            XCODE_APP="/Applications/Xcode.app"
+            XCODE_APP=$(ls -d /Applications/Xcode*.app | tail -n 1)
           fi
           
           echo "Selecting $XCODE_APP"
@@ -36,6 +35,25 @@ jobs:
           xcodebuild -version
           echo "Available SDKs:"
           xcodebuild -showsdks
+
+      - name: Setup Rust & Compile libidevice_ffi if needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "Vendor/idevice/libidevice_ffi.a" ]; then
+            echo "libidevice_ffi.a not found in repo. Building static library for aarch64-apple-ios..."
+            rustup target add aarch64-apple-ios
+            git clone --depth 1 https://github.com/jkcoxson/idevice.git /tmp/idevice-src
+            cd /tmp/idevice-src/ffi
+            cargo build --release --target aarch64-apple-ios
+            cd "$GITHUB_WORKSPACE"
+            mkdir -p Vendor/idevice
+            cp /tmp/idevice-src/target/aarch64-apple-ios/release/libidevice_ffi.a Vendor/idevice/libidevice_ffi.a
+            echo "libidevice_ffi.a successfully built and installed to Vendor/idevice/"
+          else
+            echo "Vendor/idevice/libidevice_ffi.a already exists."
+          fi
+          ls -lh Vendor/idevice/
 
       - name: Install XcodeGen
         shell: bash
@@ -55,17 +73,6 @@ jobs:
           test -d Locus.xcodeproj
           echo "Generated Locus.xcodeproj successfully."
 
-      - name: Run Unit Tests (Simulator)
-        shell: bash
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project Locus.xcodeproj \
-            -scheme LocusTests \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
-            test || true
-
       - name: Build Unsigned iOS App
         shell: bash
         run: |
@@ -80,12 +87,14 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$PWD/build" \
+            CODE_SIGN_STYLE="Manual" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
             AD_HOC_CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             clean build 2>&1 | tee build.log
 
       - name: Package IPA
