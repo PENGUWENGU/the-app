@@ -2,15 +2,6 @@ name: Build unsigned IPA
 
 on:
   workflow_dispatch:
-    inputs:
-      configuration:
-        description: Build configuration
-        required: true
-        default: Release
-        type: choice
-        options:
-          - Release
-          - Debug
 
 jobs:
   build:
@@ -20,56 +11,81 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build unsigned IPA
+      - name: Build app
         run: |
           set -e
-
-          rm -rf build
-          mkdir -p build
 
           xcodebuild \
             -project Locus.xcodeproj \
             -scheme Locus \
-            -configuration "${{ inputs.configuration }}" \
+            -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath build \
+            -derivedDataPath "$PWD/build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            clean build | tee build/build.log
+            clean build
 
-      - name: Package IPA
+      - name: Find app
         run: |
           set -e
 
-          APP_PATH="build/Build/Products/${{ inputs.configuration }}-iphoneos/Locus.app"
+          echo "Searching for built apps..."
 
-          if [ ! -d "$APP_PATH" ]; then
-            echo "Locus.app was not found."
-            echo "Searching for it:"
-            find build -name "Locus.app" -print
+          find build -type d -name "*.app" -print
+
+          APP_PATH=$(find build -type d -name "Locus.app" | head -n 1)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: No Locus.app found."
             exit 1
           fi
 
-          mkdir -p build/Payload
-          cp -R "$APP_PATH" build/Payload/Locus.app
+          echo "Found: $APP_PATH"
 
-          cd build
-          zip -r LocusPlus-unsigned.ipa Payload
+          echo "App size:"
+          du -sh "$APP_PATH"
+
+          echo "App contents:"
+          find "$APP_PATH" -maxdepth 2 -type f | head -50
+
+          echo "$APP_PATH" > app_path.txt
+
+      - name: Create IPA
+        run: |
+          set -e
+
+          APP_PATH=$(cat app_path.txt)
+
+          rm -rf Payload
+          mkdir Payload
+
+          cp -R "$APP_PATH" Payload/Locus.app
+
+          echo "Payload contents:"
+          ls -lah Payload
+          du -sh Payload/Locus.app
+
+          rm -f LocusPlus-unsigned.ipa
+
+          zip -r -9 LocusPlus-unsigned.ipa Payload
+
+          echo "IPA created:"
+          ls -lh LocusPlus-unsigned.ipa
+
+          IPA_SIZE=$(stat -f%z LocusPlus-unsigned.ipa)
+
+          if [ "$IPA_SIZE" -lt 1000000 ]; then
+            echo "ERROR: IPA is suspiciously small: $IPA_SIZE bytes"
+            exit 1
+          fi
+
+          echo "IPA looks valid."
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: LocusPlus-unsigned
-          path: build/LocusPlus-unsigned.ipa
+          path: LocusPlus-unsigned.ipa
           if-no-files-found: error
-
-      - name: Upload build log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: build/build.log
-          if-no-files-found: ignore
