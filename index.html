@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Locus - iOS Location Simulator</title>
+    <meta name="description" content="Interactive web simulator and preview for the Locus iOS location spoofing, joystick navigation, and GPX route playback application." />
+    <meta property="og:title" content="Locus - iOS Location Simulator" />
+    <meta property="og:description" content="Interactive web simulator and preview for the Locus iOS location spoofing, joystick navigation, and GPX route playback application." />
+    <!-- Leaflet CSS for smooth maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              accent: '#22E58B',
+              'accent-secondary': '#60A5FA',
+              danger: '#EF4444',
+              warning: '#F59E0B'
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-black text-white antialiased overflow-hidden select-none">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

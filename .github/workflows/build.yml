@@ -79,7 +79,7 @@ jobs:
             xcodegen generate --spec project.yml || echo "XcodeGen warning: using committed Locus.xcodeproj"
           elif command -v brew >/dev/null 2>&1; then
             echo "Installing XcodeGen via Homebrew..."
-            brew install xcodegen || true
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen || true
             if command -v xcodegen >/dev/null 2>&1; then
               xcodegen generate --spec project.yml || echo "XcodeGen warning: using committed Locus.xcodeproj"
             fi
@@ -113,6 +113,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
             AD_HOC_CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             build 2>&1 | tee build.log
 
       - name: Locate and Package IPA

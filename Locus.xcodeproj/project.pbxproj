@@ -32,6 +32,12 @@
 		EA7795A0D36F3F0AFA464944 /* SpoofSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6C3F15BC482A2CBF13B1EA6 /* SpoofSession.swift */; };
 		F42C461AA339262E17E26A10 /* SetupFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 429366C3732ACF4031A7006B /* SetupFlowView.swift */; };
 		F8A8DEF1249AB260C4FF901A /* SilentAudioKeepAlive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF917A85B507FDDCF382E2F /* SilentAudioKeepAlive.swift */; };
+		B0473680FFAA42460D80DD04 /* TravelMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63EB29EB4B3F6B914FA28F0C /* TravelMode.swift */; };
+		8FE6ECE1C80A46C46A98FB55 /* SavedRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775E1AA70621CF6C8990393B /* SavedRoute.swift */; };
+		0AF0E4A98EFB4CE988DA0177 /* RouteETACalculatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8101D0D236E23D4E09162C0 /* RouteETACalculatorView.swift */; };
+		637E207EBECB9828E04DF04B /* RouteManagerModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F8CBE153F88F65FCB1473C5 /* RouteManagerModal.swift */; };
+		274808B9E364358DDCF48410 /* RoutesSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADAC13561E13F51D86AF2473 /* RoutesSidebarView.swift */; };
+		7231BC2B0D6CE54D4465FCD4 /* SavedRoutesModalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A37AC190E01E803A2045262 /* SavedRoutesModalView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +70,12 @@
 		F714A23C4C718E67E978565F /* MapHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapHomeView.swift; sourceTree = "<group>"; };
 		FE9BF680256F4FF39E4FECB0 /* idevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = idevice.h; sourceTree = "<group>"; };
 		FF1AF0F32E88B4227CA45694 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		63EB29EB4B3F6B914FA28F0C /* TravelMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TravelMode.swift; sourceTree = "<group>"; };
+		775E1AA70621CF6C8990393B /* SavedRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedRoute.swift; sourceTree = "<group>"; };
+		D8101D0D236E23D4E09162C0 /* RouteETACalculatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteETACalculatorView.swift; sourceTree = "<group>"; };
+		0F8CBE153F88F65FCB1473C5 /* RouteManagerModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteManagerModal.swift; sourceTree = "<group>"; };
+		ADAC13561E13F51D86AF2473 /* RoutesSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutesSidebarView.swift; sourceTree = "<group>"; };
+		1A37AC190E01E803A2045262 /* SavedRoutesModalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedRoutesModalView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -161,6 +173,7 @@
 		B32582618AEAB100F3C055BD /* Engine */ = {
 			isa = PBXGroup;
 			children = (
+				63EB29EB4B3F6B914FA28F0C /* TravelMode.swift */,
 				5415BEF759B8C8AF04096B3E /* BackgroundKeepAlive.swift */,
 				91E2EBD3F6F937176E4EC13F /* DeviceTunnel.swift */,
 				377FB9983B927B5898D09160 /* LocationEngine.swift */,
@@ -177,6 +190,7 @@
 		B67E43CBD395C80F3D3345CB /* Support */ = {
 			isa = PBXGroup;
 			children = (
+				775E1AA70621CF6C8990393B /* SavedRoute.swift */,
 				BFAD463F53BD704A35A8E65F /* LocalDevVPN.swift */,
 				2E6BE765DFC4FB848609C8AA /* PairingDocumentPicker.swift */,
 				799094E9B1F051BEAD82D2C1 /* SavedPlace.swift */,
@@ -188,6 +202,10 @@
 		B8E755C6C753821B2A8E141A /* Routes */ = {
 			isa = PBXGroup;
 			children = (
+				1A37AC190E01E803A2045262 /* SavedRoutesModalView.swift */,
+				ADAC13561E13F51D86AF2473 /* RoutesSidebarView.swift */,
+				0F8CBE153F88F65FCB1473C5 /* RouteManagerModal.swift */,
+				D8101D0D236E23D4E09162C0 /* RouteETACalculatorView.swift */,
 				D76779E56819A74B78236EF1 /* RoutePlannerSheet.swift */,
 			);
 			path = Routes;
@@ -286,6 +304,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B0473680FFAA42460D80DD04 /* TravelMode.swift in Sources */,
+				8FE6ECE1C80A46C46A98FB55 /* SavedRoute.swift in Sources */,
+				0AF0E4A98EFB4CE988DA0177 /* RouteETACalculatorView.swift in Sources */,
+				637E207EBECB9828E04DF04B /* RouteManagerModal.swift in Sources */,
+				274808B9E364358DDCF48410 /* RoutesSidebarView.swift in Sources */,
+				7231BC2B0D6CE54D4465FCD4 /* SavedRoutesModalView.swift in Sources */,
 				C5B176B29163E524B776757A /* BackgroundKeepAlive.swift in Sources */,
 				4A19A245C3B57EB4E5B02CDE /* DeviceTunnel.swift in Sources */,
 				AB35A419877FF9CA0B4AB114 /* JoystickPad.swift in Sources */,
