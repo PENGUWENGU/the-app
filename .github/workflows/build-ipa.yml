@@ -1,0 +1,360 @@
+name: Build Locus IPA
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-26
+
+    env:
+      PROJECT: Locus.xcodeproj
+      SCHEME: Locus
+      CONFIGURATION: Release
+      DERIVED_DATA: build
+      IPA_NAME: Locus-unsigned.ipa
+
+    steps:
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # ------------------------------------------------------------
+      # Show environment
+      # ------------------------------------------------------------
+      - name: Show build environment
+        run: |
+          set -o pipefail
+
+          echo "=== macOS ==="
+          sw_vers
+
+          echo
+          echo "=== Xcode ==="
+          xcodebuild -version
+
+          echo
+          echo "=== Swift ==="
+          swift --version
+
+          echo
+          echo "=== Available Xcode installations ==="
+          ls -la /Applications | grep -i Xcode || true
+
+      # ------------------------------------------------------------
+      # Install XcodeGen
+      # ------------------------------------------------------------
+      - name: Install XcodeGen
+        run: |
+          set -euo pipefail
+
+          if command -v xcodegen >/dev/null 2>&1; then
+            echo "XcodeGen already installed:"
+            xcodegen --version
+          else
+            brew install xcodegen
+          fi
+
+          xcodegen --version
+
+      # ------------------------------------------------------------
+      # Generate Xcode project
+      # ------------------------------------------------------------
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+
+          if [ ! -f project.yml ]; then
+            echo "::error::project.yml was not found."
+            echo "The repository is expected to contain project.yml for XcodeGen."
+            exit 1
+          fi
+
+          xcodegen generate
+
+          if [ ! -d "$PROJECT" ]; then
+            echo "::error::$PROJECT was not generated."
+            exit 1
+          fi
+
+          echo "Generated:"
+          ls -la "$PROJECT"
+
+      # ------------------------------------------------------------
+      # Verify scheme
+      # ------------------------------------------------------------
+      - name: Verify Xcode scheme
+        run: |
+          set -o pipefail
+
+          xcodebuild \
+            -project "$PROJECT" \
+            -list \
+            | tee scheme-list.txt
+
+          if ! grep -q "$SCHEME" scheme-list.txt; then
+            echo "::error::Scheme '$SCHEME' was not found."
+            exit 1
+          fi
+
+      # ------------------------------------------------------------
+      # Build
+      #
+      # Signing is intentionally disabled here.
+      # This produces an unsigned IPA suitable for sideloading/
+      # further signing with an external signing tool.
+      # ------------------------------------------------------------
+      - name: Build application
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+
+          mkdir -p logs
+
+          echo "Starting Xcode build..."
+          echo "Project: $PROJECT"
+          echo "Scheme: $SCHEME"
+          echo "Configuration: $CONFIGURATION"
+
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=NO \
+            clean build \
+            2>&1 | tee logs/xcodebuild.log
+
+          BUILD_EXIT=${PIPESTATUS[0]}
+
+          echo "$BUILD_EXIT" > logs/build-exit-code.txt
+
+          exit "$BUILD_EXIT"
+
+      # ------------------------------------------------------------
+      # Always collect useful diagnostics
+      # ------------------------------------------------------------
+      - name: Collect build diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set +e
+
+          mkdir -p logs
+
+          echo "=== Build diagnostics ===" > logs/diagnostics.txt
+          echo >> logs/diagnostics.txt
+
+          echo "Date:" >> logs/diagnostics.txt
+          date >> logs/diagnostics.txt
+          echo >> logs/diagnostics.txt
+
+          echo "macOS:" >> logs/diagnostics.txt
+          sw_vers >> logs/diagnostics.txt
+          echo >> logs/diagnostics.txt
+
+          echo "Xcode:" >> logs/diagnostics.txt
+          xcodebuild -version >> logs/diagnostics.txt 2>&1
+          echo >> logs/diagnostics.txt
+
+          echo "Swift:" >> logs/diagnostics.txt
+          swift --version >> logs/diagnostics.txt 2>&1
+          echo >> logs/diagnostics.txt
+
+          echo "Git commit:" >> logs/diagnostics.txt
+          git rev-parse HEAD >> logs/diagnostics.txt 2>&1
+          echo >> logs/diagnostics.txt
+
+          echo "Git branch:" >> logs/diagnostics.txt
+          git branch --show-current >> logs/diagnostics.txt 2>&1
+          echo >> logs/diagnostics.txt
+
+          echo "Build exit code:" >> logs/diagnostics.txt
+          cat logs/build-exit-code.txt >> logs/diagnostics.txt 2>/dev/null || true
+          echo >> logs/diagnostics.txt
+
+          echo "=== Available build products ===" >> logs/diagnostics.txt
+          find "$DERIVED_DATA" \
+            -maxdepth 6 \
+            -type d \
+            -name "*.app" \
+            -print \
+            >> logs/diagnostics.txt 2>&1 || true
+
+          echo "=== Swift errors ===" > logs/swift-errors.txt
+
+          if [ -f logs/xcodebuild.log ]; then
+            grep -E \
+              "error:|fatal error:|BUILD FAILED|warning:" \
+              logs/xcodebuild.log \
+              >> logs/swift-errors.txt \
+              2>&1 || true
+          fi
+
+      # ------------------------------------------------------------
+      # Package IPA
+      # ------------------------------------------------------------
+      - name: Package IPA
+        id: package
+        if: steps.build.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$DERIVED_DATA/Build/Products/${CONFIGURATION}-iphoneos/${SCHEME}.app"
+
+          echo "Looking for:"
+          echo "$APP_PATH"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::Built .app was not found at $APP_PATH"
+            echo
+            echo "Available .app files:"
+            find "$DERIVED_DATA" -name "*.app" -print || true
+            exit 1
+          fi
+
+          rm -rf Payload
+          mkdir -p Payload
+
+          cp -R "$APP_PATH" Payload/
+
+          rm -f "$IPA_NAME"
+
+          # An IPA is a ZIP archive containing Payload/<App>.app
+          ditto -c -k --sequesterRsrc --keepParent \
+            Payload \
+            "$IPA_NAME"
+
+          echo
+          echo "IPA created:"
+          ls -lh "$IPA_NAME"
+
+          echo
+          echo "IPA SHA-256:"
+          shasum -a 256 "$IPA_NAME"
+
+      # ------------------------------------------------------------
+      # Verify IPA structure
+      # ------------------------------------------------------------
+      - name: Verify IPA
+        if: steps.package.outcome == 'success'
+        run: |
+          set -euo pipefail
+
+          if [ ! -f "$IPA_NAME" ]; then
+            echo "::error::IPA was not created."
+            exit 1
+          fi
+
+          echo "=== IPA contents ==="
+          unzip -l "$IPA_NAME"
+
+          if ! unzip -l "$IPA_NAME" | grep -q "Payload/${SCHEME}.app/"; then
+            echo "::error::IPA does not contain Payload/${SCHEME}.app"
+            exit 1
+          fi
+
+      # ------------------------------------------------------------
+      # Upload IPA
+      #
+      # upload-artifact v4+ is the current artifact implementation.
+      # ------------------------------------------------------------
+      - name: Upload IPA
+        if: steps.package.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Locus-unsigned-IPA
+          path: ${{ env.IPA_NAME }}
+          if-no-files-found: error
+          retention-days: 14
+
+      # ------------------------------------------------------------
+      # Upload complete build logs
+      #
+      # This runs even when the build fails.
+      # ------------------------------------------------------------
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Locus-build-logs
+          path: |
+            logs/
+            scheme-list.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      # ------------------------------------------------------------
+      # Upload Xcode build products for debugging
+      # ------------------------------------------------------------
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Locus-build-diagnostics
+          path: |
+            ${{ env.DERIVED_DATA }}/Build/Logs/
+            ${{ env.DERIVED_DATA }}/Build/Intermediates.noindex/**/SwiftCompile*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # ------------------------------------------------------------
+      # Fail workflow if compilation failed
+      #
+      # The logs were already uploaded above.
+      # ------------------------------------------------------------
+      - name: Report build result
+        if: always()
+        shell: bash
+        run: |
+          BUILD_RESULT="${{ steps.build.outcome }}"
+          PACKAGE_RESULT="${{ steps.package.outcome }}"
+
+          echo "Build result: $BUILD_RESULT"
+          echo "Package result: $PACKAGE_RESULT"
+
+          if [ "$BUILD_RESULT" != "success" ]; then
+            echo
+            echo "::error::Xcode compilation failed."
+            echo "Download the 'Locus-build-logs' artifact for the complete error log."
+            exit 1
+          fi
+
+          if [ "$PACKAGE_RESULT" != "success" ]; then
+            echo
+            echo "::error::The application built, but IPA packaging failed."
+            exit 1
+          fi
+
+          echo
+          echo "======================================"
+          echo " IPA BUILD SUCCESSFUL"
+          echo "======================================"
+          echo
+          echo "Artifact: Locus-unsigned-IPA"
+          echo "File: $IPA_NAME"
+```
