@@ -11,127 +11,62 @@ permissions:
   contents: read
 
 jobs:
-  build-unsigned-ipa:
-    name: Build Locus Unsigned IPA
-    runs-on: macos-14
+  build:
+    name: Build Unsigned IPA
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Installed Xcode versions:"
-          ls -d /Applications/Xcode*.app || true
-          
-          XCODE_APP=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | tail -n 1 || true)
-          if [ -z "$XCODE_APP" ]; then
-            XCODE_APP=$(ls -d /Applications/Xcode*.app | tail -n 1)
-          fi
-          
-          echo "Selecting $XCODE_APP"
-          sudo xcode-select -s "$XCODE_APP"
-          xcodebuild -version
-          echo "Available SDKs:"
-          xcodebuild -showsdks
-
-      - name: Setup Rust & Compile libidevice_ffi if needed
+      - name: Build idevice FFI library
         shell: bash
         run: |
           set -euo pipefail
           if [ ! -f "Vendor/idevice/libidevice_ffi.a" ]; then
-            echo "libidevice_ffi.a not found in repo. Building static library for aarch64-apple-ios..."
             rustup target add aarch64-apple-ios
-            git clone --depth 1 https://github.com/jkcoxson/idevice.git /tmp/idevice-src
-            cd /tmp/idevice-src/ffi
+            git clone --depth 1 https://github.com/jkcoxson/idevice.git /tmp/idevice
+            cd /tmp/idevice/ffi
             cargo build --release --target aarch64-apple-ios
             cd "$GITHUB_WORKSPACE"
             mkdir -p Vendor/idevice
-            cp /tmp/idevice-src/target/aarch64-apple-ios/release/libidevice_ffi.a Vendor/idevice/libidevice_ffi.a
-            echo "libidevice_ffi.a successfully built and installed to Vendor/idevice/"
-          else
-            echo "Vendor/idevice/libidevice_ffi.a already exists."
+            cp /tmp/idevice/target/aarch64-apple-ios/release/libidevice_ffi.a Vendor/idevice/libidevice_ffi.a
           fi
-          ls -lh Vendor/idevice/
 
       - name: Install XcodeGen
         shell: bash
         run: |
-          set -euo pipefail
-          if ! command -v xcodegen >/dev/null 2>&1; then
-            brew install xcodegen
-          fi
-          xcodegen version
+          brew install xcodegen
 
       - name: Generate Xcode Project
         shell: bash
         run: |
-          set -euo pipefail
-          rm -rf Locus.xcodeproj
           xcodegen generate --spec project.yml
-          test -d Locus.xcodeproj
-          echo "Generated Locus.xcodeproj successfully."
 
-      - name: Build Unsigned iOS App
+      - name: Build iOS App
         shell: bash
         run: |
-          set -o pipefail
-          rm -rf build
-          mkdir -p build
-          
           xcodebuild \
             -project Locus.xcodeproj \
             -scheme Locus \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath "$PWD/build" \
-            CODE_SIGN_STYLE="Manual" \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            clean build 2>&1 | tee build.log
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
 
-      - name: Package IPA
+      - name: Create IPA
         shell: bash
         run: |
-          set -euo pipefail
-          APP_PATH="build/Build/Products/Release-iphoneos/Locus.app"
-          
-          if [ ! -d "$APP_PATH" ]; then
-            echo "::error::Locus.app was not found at $APP_PATH"
-            find build -name "*.app" -type d || true
-            exit 1
-          fi
-          
-          rm -rf Payload
           mkdir -p Payload
-          cp -R "$APP_PATH" Payload/Locus.app
-          
-          rm -f Locus-unsigned.ipa
-          /usr/bin/zip -qry Locus-unsigned.ipa Payload
-          
-          echo "IPA created successfully:"
-          ls -lh Locus-unsigned.ipa
+          cp -R build/Build/Products/Release-iphoneos/Locus.app Payload/
+          zip -qry Locus-unsigned.ipa Payload
 
-      - name: Upload Unsigned IPA
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Locus-unsigned-IPA
           path: Locus-unsigned.ipa
           if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload Build Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Locus-build-log
-          path: build.log
-          if-no-files-found: ignore
-          retention-days: 7
