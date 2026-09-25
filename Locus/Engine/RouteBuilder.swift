@@ -45,6 +45,68 @@ enum RouteBuilder {
         }
         return sampled
     }
+
+    // MARK: - ETA Calculations
+    public static func calculateTotalDistance(coordinates: [CLLocationCoordinate2D]) -> CLLocationDistance {
+        guard coordinates.count > 1 else { return 0 }
+        var total: CLLocationDistance = 0
+        for (a, b) in zip(coordinates, coordinates.dropFirst()) {
+            total += CLLocation(latitude: a.latitude, longitude: a.longitude)
+                .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        }
+        return total
+    }
+
+    public static func calculateETA(distanceMeters: Double, speedMPS: Double) -> TimeInterval {
+        let effectiveSpeed = max(0.1, speedMPS)
+        return distanceMeters / effectiveSpeed
+    }
+
+    public static func formatDuration(_ duration: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(ceil(duration)))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        } else {
+            return "\(seconds)s"
+        }
+    }
+
+    public static func calculateRouteETA(
+        coordinates: [CLLocationCoordinate2D],
+        speedMPS: Double,
+        from startDate: Date = Date()
+    ) -> RouteETAResult {
+        let distance = calculateTotalDistance(coordinates: coordinates)
+        let duration = calculateETA(distanceMeters: distance, speedMPS: speedMPS)
+        let arrival = startDate.addingTimeInterval(duration)
+        return RouteETAResult(
+            totalDistanceMeters: distance,
+            durationSeconds: duration,
+            formattedDuration: formatDuration(duration),
+            estimatedArrivalDate: arrival
+        )
+    }
+}
+
+public struct RouteETAResult: Equatable {
+    public let totalDistanceMeters: Double
+    public let durationSeconds: TimeInterval
+    public let formattedDuration: String
+    public let estimatedArrivalDate: Date
+
+    public var formattedDistance: String {
+        if totalDistanceMeters >= 1000 {
+            return String(format: "%.2f km", totalDistanceMeters / 1000)
+        } else {
+            return String(format: "%.0f m", totalDistanceMeters)
+        }
+    }
 }
 
 // MARK: - GPX data model

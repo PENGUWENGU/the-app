@@ -161,7 +161,7 @@ public struct RoutePlannerSheet: View {
                                             .foregroundStyle(LocusTheme.accent)
                                         Text("•")
                                             .foregroundStyle(.secondary)
-                                        Text("\(route.coordinates.count) points")
+                                        Text("\(route.waypoints.count) points")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }

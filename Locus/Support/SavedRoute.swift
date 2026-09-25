@@ -141,8 +141,9 @@ public struct SavedRoute: Identifiable, Codable, Equatable {
     }
 
     // MARK: - Persistent Storage (UserDefaults / Local Storage)
-    private static let storageKey = "locus.savedRoutes"
+    public static let storageKey = "locus.savedRoutes"
 
+    /// Loads all saved routes from local storage
     public static func load(key: String = storageKey) -> [SavedRoute] {
         guard let data = UserDefaults.standard.data(forKey: key),
               let decoded = try? JSONDecoder().decode([SavedRoute].self, from: data) else {
@@ -151,9 +152,95 @@ public struct SavedRoute: Identifiable, Codable, Equatable {
         return decoded
     }
 
+    /// Saves the full list of routes to local storage
     public static func save(_ routes: [SavedRoute], key: String = storageKey) {
         if let data = try? JSONEncoder().encode(routes) {
             UserDefaults.standard.set(data, forKey: key)
         }
+    }
+
+    /// Helper: returns a list of all saved route names
+    public static func getSavedRouteNames(key: String = storageKey) -> [String] {
+        load(key: key).map(\.name)
+    }
+
+    /// Helper: saves the current GPS route data to local storage
+    @discardableResult
+    public static func saveCurrentRoute(
+        name: String,
+        coordinates: [CLLocationCoordinate2D],
+        rawGPX: String? = nil,
+        key: String = storageKey
+    ) -> SavedRoute {
+        var existing = load(key: key)
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let routeName = trimmed.isEmpty ? "Route \(existing.count + 1)" : trimmed
+        let newRoute = SavedRoute(name: routeName, coordinates: coordinates, rawGPX: rawGPX)
+        existing.insert(newRoute, at: 0)
+        save(existing, key: key)
+        return newRoute
+    }
+
+    /// Helper: retrieves a route by its name
+    public static func getRouteByName(_ name: String, key: String = storageKey) -> SavedRoute? {
+        load(key: key).first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// Helper: deletes a route by id
+    public static func deleteRoute(id: String, key: String = storageKey) {
+        var routes = load(key: key)
+        routes.removeAll { $0.id == id }
+        save(routes, key: key)
+    }
+
+    /// Helper: renames an existing route
+    public static func renameRoute(id: String, to newName: String, key: String = storageKey) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var routes = load(key: key)
+        if let idx = routes.firstIndex(where: { $0.id == id }) {
+            routes[idx].name = trimmed
+            save(routes, key: key)
+        }
+    }
+
+    // MARK: - GPX Export
+    /// Exports this route to standard GPX XML format
+    public func toGPX() -> String {
+        if let cached = rawGPX, !cached.isEmpty {
+            return cached
+        }
+        let points = waypoints.map { $0.gpxTrackPoint }
+        let track = GPXTrack(name: name, segments: [points])
+        return GPXCodec.export(track)
+    }
+
+    /// Writes this route to a standard .gpx file in the temporary directory for downloading or sharing
+    public func exportToGPXFile(fileName: String? = nil) -> URL? {
+        let xml = toGPX()
+        let safeName = (fileName ?? name)
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .joined(separator: "_")
+        let actualName = safeName.isEmpty ? "route_\(id.prefix(6))" : safeName
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(actualName).gpx")
+        do {
+            try xml.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    /// Exports a route from local storage by its ID directly to a .gpx file URL
+    public static func exportRouteFromLocalStorage(id: String, key: String = storageKey) -> URL? {
+        guard let route = load(key: key).first(where: { $0.id == id }) else { return nil }
+        return route.exportToGPXFile()
+    }
+
+    /// Exports a route from local storage by its name directly to a .gpx file URL
+    public static func exportRouteFromLocalStorage(name: String, key: String = storageKey) -> URL? {
+        guard let route = getRouteByName(name, key: key) else { return nil }
+        return route.exportToGPXFile()
     }
 }
