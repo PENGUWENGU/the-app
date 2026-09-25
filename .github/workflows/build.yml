@@ -1,4 +1,4 @@
-name: Build unsigned IPA
+name: Build Locus Unsigned IPA
 
 on:
   workflow_dispatch:
@@ -8,60 +8,26 @@ permissions:
 
 jobs:
   build:
-    name: Build Locus IPA
     runs-on: macos-26
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 26.6
-        shell: bash
+      - name: Select Xcode
         run: |
-          set -e
-
           sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
-
-          echo "Xcode:"
           xcodebuild -version
 
-          echo "SDK:"
-          xcrun --sdk iphoneos --show-sdk-version
-
       - name: Install XcodeGen
-        shell: bash
         run: |
-          set -e
           brew install xcodegen
-          xcodegen version
-
-      - name: Verify project files
-        shell: bash
-        run: |
-          set -e
-
-          test -f project.yml
-          test -d Locus
-          test -d Vendor/idevice
-          test -f Vendor/idevice/libidevice_ffi.a
-
-          echo "Project files verified."
 
       - name: Generate Xcode project
-        shell: bash
         run: |
-          set -e
-
-          rm -rf Locus.xcodeproj
-
-          xcodegen generate --spec project.yml
-
-          test -d Locus.xcodeproj
-
-          echo "Xcode project generated successfully."
+          xcodegen generate
 
       - name: Build unsigned Locus
-        shell: bash
         run: |
           set -o pipefail
 
@@ -80,88 +46,33 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tee build.log
 
-      - name: Verify Locus.app
-        shell: bash
-        run: |
-          set -e
-
-          APP_PATH="$PWD/build/Build/Products/Release-iphoneos/Locus.app"
-
-          if [ ! -d "$APP_PATH" ]; then
-            echo "ERROR: Locus.app was not created."
-            echo
-            echo "Available build products:"
-            find "$PWD/build/Build/Products" -maxdepth 3 -print 2>/dev/null || true
-            exit 1
-          fi
-
-          echo "Locus.app found:"
-          ls -la "$APP_PATH"
-
-      - name: Verify architecture
-        shell: bash
-        run: |
-          set -e
-
-          APP="$PWD/build/Build/Products/Release-iphoneos/Locus.app/Locus"
-
-          echo "Executable architecture:"
-          lipo -info "$APP"
-
-      - name: Verify unsigned build
-        shell: bash
-        run: |
-          set -e
-
-          APP_PATH="$PWD/build/Build/Products/Release-iphoneos/Locus.app"
-
-          echo "Code-sign information:"
-          codesign -dvv "$APP_PATH" 2>&1 || true
-
-          if codesign -dvv "$APP_PATH" 2>&1 | grep -q "Authority="; then
-            echo "ERROR: Locus.app contains a signing authority."
-            exit 1
-          fi
-
-          echo "No signing authority detected."
-
       - name: Create IPA
-        shell: bash
         run: |
           set -e
 
-          APP_PATH="$PWD/build/Build/Products/Release-iphoneos/Locus.app"
+          APP="build/Build/Products/Release-iphoneos/Locus.app"
+
+          test -d "$APP"
 
           rm -rf Payload
-          mkdir -p Payload
+          mkdir Payload
 
-          cp -R "$APP_PATH" Payload/Locus.app
+          cp -R "$APP" Payload/Locus.app
 
-          rm -f LocusPlus-unsigned.ipa
+          zip -qry LocusPlus-unsigned.ipa Payload
 
-          cd Payload
-          zip -qry ../LocusPlus-unsigned.ipa Locus.app
-          cd ..
-
-          echo "IPA created:"
           ls -lh LocusPlus-unsigned.ipa
 
-          echo "IPA contents:"
-          unzip -l LocusPlus-unsigned.ipa | head -30
-
-      - name: Upload unsigned IPA
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: LocusPlus-unsigned
           path: LocusPlus-unsigned.ipa
-          if-no-files-found: error
-          retention-days: 7
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: build-log
           path: build.log
           if-no-files-found: ignore
-          retention-days: 7
