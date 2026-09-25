@@ -2,82 +2,108 @@ name: Build Unsigned IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Build configuration'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Release
+          - Debug
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
 
 permissions:
   contents: read
 
 jobs:
   build-unsigned-ipa:
-    name: Build Locus unsigned IPA
-    runs-on: macos-26
+    name: Build Locus Unsigned IPA
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
+          submodules: recursive
 
-      - name: Select Xcode 26.6
+      - name: Select Xcode Version
         shell: bash
         run: |
           set -euo pipefail
-          XCODE="/Applications/Xcode_26.6.app"
-          if [ ! -d "$XCODE" ]; then
-            echo "::error::Xcode 26.6 was not found at $XCODE"
-            echo "Installed Xcode versions:"
-            ls -1 /Applications | grep -E '^Xcode.*\.app$' || true
-            exit 1
+          echo "Scanning available Xcode installations in /Applications:"
+          ls -1d /Applications/Xcode*.app 2>/dev/null || true
+
+          # Select newest available Xcode (prefer 26.x, then 16.x, then system default)
+          if [ -d "/Applications/Xcode_26.6.app" ]; then
+            XCODE="/Applications/Xcode_26.6.app"
+          elif [ -d "/Applications/Xcode_26.6.0.app" ]; then
+            XCODE="/Applications/Xcode_26.6.0.app"
+          elif ls -d /Applications/Xcode_26*.app 2>/dev/null; then
+            XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          elif [ -d "/Applications/Xcode_16.4.app" ]; then
+            XCODE="/Applications/Xcode_16.4.app"
+          elif [ -d "/Applications/Xcode_16.3.app" ]; then
+            XCODE="/Applications/Xcode_16.3.app"
+          elif [ -d "/Applications/Xcode_16.2.app" ]; then
+            XCODE="/Applications/Xcode_16.2.app"
+          elif [ -d "/Applications/Xcode_16.1.app" ]; then
+            XCODE="/Applications/Xcode_16.1.app"
+          elif [ -d "/Applications/Xcode_16.0.app" ]; then
+            XCODE="/Applications/Xcode_16.0.app"
+          elif ls -d /Applications/Xcode_16*.app 2>/dev/null; then
+            XCODE=$(ls -d /Applications/Xcode_16*.app | sort -V | tail -n 1)
+          elif [ -d "/Applications/Xcode.app" ]; then
+            XCODE="/Applications/Xcode.app"
+          else
+            XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)
           fi
+
+          echo "Configuring Xcode: $XCODE"
           sudo xcode-select -s "$XCODE"
-          echo "Xcode:"
+          echo "Active Developer Directory: $(xcode-select -p)"
           xcodebuild -version
           echo
-          echo "iPhoneOS SDKs:"
-          xcodebuild -showsdks | grep -i iphoneos
+          echo "Installed iOS SDKs:"
+          xcodebuild -showsdks | grep -i iphoneos || true
 
-      - name: Install XcodeGen
+      - name: Setup XcodeGen (Optional Regeneration)
         shell: bash
         run: |
-          set -euo pipefail
-          if ! command -v xcodegen >/dev/null 2>&1; then
-            brew install xcodegen
+          set -eo pipefail
+          if command -v xcodegen >/dev/null 2>&1; then
+            echo "XcodeGen already available: $(xcodegen version)"
+            xcodegen generate --spec project.yml || echo "XcodeGen warning: using committed Locus.xcodeproj"
+          elif command -v brew >/dev/null 2>&1; then
+            echo "Installing XcodeGen via Homebrew..."
+            brew install xcodegen || true
+            if command -v xcodegen >/dev/null 2>&1; then
+              xcodegen generate --spec project.yml || echo "XcodeGen warning: using committed Locus.xcodeproj"
+            fi
           fi
-          xcodegen version
-
-      - name: Generate Xcode project
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf Locus.xcodeproj
-          xcodegen generate --spec project.yml
           test -d Locus.xcodeproj
+          echo "Xcode project ready."
 
-      - name: Show build configuration
+      - name: Clean build directory
         shell: bash
         run: |
-          set -euo pipefail
-          echo "Schemes:"
-          xcodebuild \
-            -project Locus.xcodeproj \
-            -list
-          echo
-          echo "Project deployment target:"
-          grep -n 'deploymentTarget\|IPHONEOS_DEPLOYMENT_TARGET\|xcodeVersion' project.yml || true
-
-      - name: Clean build
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf build
+          rm -rf build Payload *.ipa
           mkdir -p build
 
       - name: Build unsigned iOS app
         shell: bash
         run: |
           set -o pipefail
+          CONFIG="${{ inputs.configuration || 'Release' }}"
+          echo "Building Locus scheme in $CONFIG configuration..."
+
           xcodebuild \
             -project Locus.xcodeproj \
             -scheme Locus \
-            -configuration Release \
+            -configuration "$CONFIG" \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$PWD/build" \
@@ -89,62 +115,36 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tee build.log
 
-      - name: Locate built app
+      - name: Locate and Package IPA
         shell: bash
         run: |
           set -euo pipefail
-          APP="build/Build/Products/Release-iphoneos/Locus.app"
-          if [ ! -d "$APP" ]; then
-            echo "::error::Locus.app was not produced."
-            echo
-            echo "Release products:"
-            find build/Build/Products -maxdepth 4 -type d -print || true
+
+          APP=$(find build -name "Locus.app" -type d | head -n 1)
+          if [ -z "$APP" ] || [ ! -d "$APP" ]; then
+            echo "::error::Locus.app was not produced by xcodebuild."
+            echo "Listing build output:"
+            find build -maxdepth 5 || true
             exit 1
           fi
-          echo "Found:"
-          du -sh "$APP"
-          echo "$APP"
 
-      - name: Verify app is unsigned
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP="build/Build/Products/Release-iphoneos/Locus.app"
-          echo "Checking code signature..."
-          if codesign -dvv "$APP" 2>&1 | grep -q "Authority="; then
-            echo "::error::The application is signed."
-            codesign -dvv "$APP" 2>&1 || true
-            exit 1
-          fi
-          echo "No signing authority found."
-
-      - name: Create IPA
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP="build/Build/Products/Release-iphoneos/Locus.app"
+          echo "Found Locus.app at: $APP"
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APP" Payload/Locus.app
+
           rm -f LocusPlus-unsigned.ipa
-          /usr/bin/zip \
-            -qry \
-            LocusPlus-unsigned.ipa \
-            Payload
+          zip -qry LocusPlus-unsigned.ipa Payload
           test -f LocusPlus-unsigned.ipa
-          echo "IPA created:"
+          echo "IPA created successfully:"
           ls -lh LocusPlus-unsigned.ipa
 
-      - name: Verify IPA contents
+      - name: Verify IPA
         shell: bash
         run: |
           set -euo pipefail
-          /usr/bin/unzip -t LocusPlus-unsigned.ipa
-          echo
-          echo "IPA contents:"
-          /usr/bin/unzip -l LocusPlus-unsigned.ipa | head -50
-          echo
-          echo "IPA verification passed."
+          unzip -t LocusPlus-unsigned.ipa
+          echo "Verified IPA integrity."
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4

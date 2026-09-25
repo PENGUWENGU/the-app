@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: com.chrismack
   deploymentTarget:
     iOS: "18.0"
-  xcodeVersion: "26.0"
+  xcodeVersion: "16.0"
   createIntermediateGroups: true
   # Icon Composer packages must be treated as a single file, not exploded.
   fileTypes:
