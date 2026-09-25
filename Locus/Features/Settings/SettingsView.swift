@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 public struct SettingsView: View {
     @EnvironmentObject private var pairing: PairingStore
@@ -11,6 +12,7 @@ public struct SettingsView: View {
     @State private var showNameEasterEgg = false
     @State private var tunnelIP = TunnelConfig.targetIP
     @State private var localDevVPNInstalled = LocalDevVPN.isInstalled
+    @State private var copiedCSS = false
     @Environment(\.scenePhase) private var scenePhase
 
     private var supportsOnDevicePairing: Bool {
@@ -29,6 +31,86 @@ public struct SettingsView: View {
     public var body: some View {
         NavigationStack {
             List {
+                // MARK: - Interface Appearance (Light / Dark Mode & CSS Variables)
+                Section {
+                    Picker("Appearance", selection: Binding(
+                        get: { session.appearanceMode },
+                        set: { newMode in
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                ThemeStore.currentAppearance = newMode
+                                session.appearanceMode = newMode
+                            }
+                        }
+                    )) {
+                        ForEach(AppearanceMode.allCases) { mode in
+                            Label(mode.rawValue, systemImage: mode.icon).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+
+                    // CSS Theme Variables Disclosure
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(session.appearanceMode.cssVariables.sorted(by: { $0.key < $1.key }), id: \.key) { key, val in
+                                HStack {
+                                    Text(key)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    HStack(spacing: 6) {
+                                        if val.hasPrefix("#") {
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .fill(Color(hex: val) ?? .clear)
+                                                .frame(width: 14, height: 14)
+                                                .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+                                        }
+                                        Text(val)
+                                            .font(.caption2.monospaced().weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                    }
+                                }
+                            }
+
+                            Button {
+                                UIPasteboard.general.string = session.appearanceMode.cssVariablesString
+                                copiedCSS = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                    copiedCSS = false
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: copiedCSS ? "checkmark" : "doc.on.doc")
+                                    Text(copiedCSS ? "CSS Variables Copied!" : "Copy CSS Variables")
+                                }
+                                .font(.caption.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color.primary.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 4)
+                        }
+                        .padding(.vertical, 4)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "paintpalette.fill")
+                                .foregroundStyle(session.currentTheme.accentColor)
+                            Text("Theme CSS Variables")
+                                .font(.subheadline.weight(.medium))
+                            Spacer()
+                            Text(session.appearanceMode.rawValue)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Interface Appearance")
+                } footer: {
+                    Text("Toggle between Light and Dark interface mode or match the system appearance.")
+                }
+
                 // MARK: - Theme & Customization
                 Section {
                     ForEach(AppTheme.allCases) { theme in

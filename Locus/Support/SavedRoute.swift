@@ -132,6 +132,10 @@ public struct SavedRoute: Identifiable, Codable, Equatable {
         waypoints.map(\.clCoordinate)
     }
 
+    public var coordinates: [CLLocationCoordinate2D] {
+        clCoordinates
+    }
+
     public var formattedDistance: String {
         if totalDistanceMeters >= 1000 {
             return String(format: "%.2f km", totalDistanceMeters / 1000)

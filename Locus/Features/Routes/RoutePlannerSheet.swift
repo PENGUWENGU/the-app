@@ -89,6 +89,15 @@ public struct RoutePlannerSheet: View {
                     } header: {
                         Text("Active Simulation")
                     }
+
+                    Section("ETA Calculator") {
+                        RouteETACalculatorView(
+                            distanceMeters: session.distanceRemainingMeters,
+                            routeName: "Remaining Route"
+                        )
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                    }
                 }
 
                 Section("Road route") {

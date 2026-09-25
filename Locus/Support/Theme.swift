@@ -50,10 +50,91 @@ public enum AppTheme: String, CaseIterable, Identifiable, Codable {
     }
 
     public var displayName: String { rawValue }
+
+    public var accentHex: String {
+        switch self {
+        case .mint: return "#59C7B8"
+        case .cyberpunk: return "#00F0FF"
+        case .electric: return "#9E4FDE"
+        case .sunset: return "#FF7A00"
+        case .ruby: return "#E63946"
+        case .emerald: return "#06D6A0"
+        case .ocean: return "#118AB2"
+        }
+    }
+
+    public var accentSecondaryHex: String {
+        switch self {
+        case .mint: return "#F28C47"
+        case .cyberpunk: return "#FF0055"
+        case .electric: return "#FF5D8F"
+        case .sunset: return "#FFB703"
+        case .ruby: return "#E9C46A"
+        case .emerald: return "#B5E48C"
+        case .ocean: return "#48CAE4"
+        }
+    }
+}
+
+public enum AppearanceMode: String, CaseIterable, Identifiable, Codable {
+    case system = "System"
+    case light = "Light"
+    case dark = "Dark"
+
+    public var id: String { rawValue }
+
+    public var icon: String {
+        switch self {
+        case .system: return "circle.lefthalf.filled"
+        case .light: return "sun.max.fill"
+        case .dark: return "moon.fill"
+        }
+    }
+
+    public var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
+    /// CSS variables representation of the UI appearance tokens
+    public var cssVariables: [String: String] {
+        switch self {
+        case .light:
+            return [
+                "--bg-primary": "#F6F7FB",
+                "--bg-surface": "#FFFFFF",
+                "--text-primary": "#111827",
+                "--text-secondary": "#6B7280",
+                "--border-color": "rgba(0, 0, 0, 0.10)",
+                "--panel-bg": "rgba(255, 255, 255, 0.85)",
+                "--accent": ThemeStore.currentTheme.accentHex,
+                "--accent-secondary": ThemeStore.currentTheme.accentSecondaryHex
+            ]
+        case .dark, .system:
+            return [
+                "--bg-primary": "#0A0D12",
+                "--bg-surface": "#121824",
+                "--text-primary": "#FFFFFF",
+                "--text-secondary": "#9CA3AF",
+                "--border-color": "rgba(255, 255, 255, 0.12)",
+                "--panel-bg": "rgba(20, 24, 34, 0.85)",
+                "--accent": ThemeStore.currentTheme.accentHex,
+                "--accent-secondary": ThemeStore.currentTheme.accentSecondaryHex
+            ]
+        }
+    }
+
+    public var cssVariablesString: String {
+        cssVariables.map { "\($0.key): \($0.value);" }.sorted().joined(separator: "\n")
+    }
 }
 
 public enum ThemeStore {
     private static let themeKey = "locus.appTheme"
+    private static let appearanceKey = "locus.appearanceMode"
 
     public static var currentTheme: AppTheme {
         get {
@@ -68,10 +149,25 @@ public enum ThemeStore {
             NotificationCenter.default.post(name: .locusThemeDidChange, object: newValue)
         }
     }
+
+    public static var currentAppearance: AppearanceMode {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: appearanceKey),
+                  let mode = AppearanceMode(rawValue: raw) else {
+                return .dark
+            }
+            return mode
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: appearanceKey)
+            NotificationCenter.default.post(name: .locusAppearanceDidChange, object: newValue)
+        }
+    }
 }
 
 extension Notification.Name {
     public static let locusThemeDidChange = Notification.Name("locus.themeDidChange")
+    public static let locusAppearanceDidChange = Notification.Name("locus.appearanceDidChange")
 }
 
 public enum LocusTheme {
@@ -140,5 +236,21 @@ extension View {
 
     public func locusGlass(_ style: LocusGlassStyle = .regular, tint: Color? = nil) -> some View {
         locusGlass(style, tint: tint, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+extension Color {
+    public init?(hex: String) {
+        var cleanHex = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanHex.hasPrefix("#") {
+            cleanHex.removeFirst()
+        }
+        guard cleanHex.count == 6, let rgb = UInt64(cleanHex, radix: 16) else {
+            return nil
+        }
+        let r = Double((rgb >> 16) & 0xFF) / 255.0
+        let g = Double((rgb >> 8) & 0xFF) / 255.0
+        let b = Double(rgb & 0xFF) / 255.0
+        self.init(red: r, green: g, blue: b)
     }
 }

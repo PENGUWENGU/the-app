@@ -6,6 +6,7 @@ public struct RootView: View {
     @EnvironmentObject private var pairing: PairingStore
     @State private var showSettings = false
     @State private var showPlaces = false
+    @State private var showRoutesSidebar = false
 
     public init() {}
 
@@ -17,10 +18,13 @@ public struct RootView: View {
 
             BottomControlsView(
                 showSettings: $showSettings,
-                showPlaces: $showPlaces
+                showPlaces: $showPlaces,
+                showRoutesSidebar: $showRoutesSidebar
             )
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
+
+            RoutesSidebarView(isOpen: $showRoutesSidebar)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -173,12 +177,14 @@ public struct BottomControlsView: View {
     @EnvironmentObject private var pairing: PairingStore
     @Binding public var showSettings: Bool
     @Binding public var showPlaces: Bool
+    @Binding public var showRoutesSidebar: Bool
 
     private let trayShape = RoundedRectangle(cornerRadius: 28, style: .continuous)
 
-    public init(showSettings: Binding<Bool>, showPlaces: Binding<Bool>) {
+    public init(showSettings: Binding<Bool>, showPlaces: Binding<Bool>, showRoutesSidebar: Binding<Bool> = .constant(false)) {
         self._showSettings = showSettings
         self._showPlaces = showPlaces
+        self._showRoutesSidebar = showRoutesSidebar
     }
 
     public var body: some View {
@@ -213,6 +219,11 @@ public struct BottomControlsView: View {
             }
 
             HStack(spacing: 10) {
+                trayIcon("sidebar.left") {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showRoutesSidebar.toggle()
+                    }
+                }
                 trayIcon("gearshape.fill") { showSettings = true }
                 trayIcon("star.fill") { showPlaces = true }
 

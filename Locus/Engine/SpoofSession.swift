@@ -57,6 +57,7 @@ public final class SpoofSession: ObservableObject {
     @Published public var routeTimeRemainingSeconds: TimeInterval = 0
     @Published public var routeTotalDistanceMeters: CLLocationDistance = 0
     @Published public var currentTheme: AppTheme = ThemeStore.currentTheme
+    @Published public var appearanceMode: AppearanceMode = ThemeStore.currentAppearance
 
     private var resendTimer: Timer?
     private var healthTimer: Timer?
@@ -76,6 +77,7 @@ public final class SpoofSession: ObservableObject {
         savedRoutes = SavedRoute.load(key: routesKey)
         customSpeedMPS = SpeedPreference.storedValue
         currentTheme = ThemeStore.currentTheme
+        appearanceMode = ThemeStore.currentAppearance
 
         NotificationCenter.default.addObserver(
             forName: .locusThemeDidChange,
@@ -84,6 +86,16 @@ public final class SpoofSession: ObservableObject {
         ) { [weak self] note in
             if let newTheme = note.object as? AppTheme {
                 self?.currentTheme = newTheme
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .locusAppearanceDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            if let newMode = note.object as? AppearanceMode {
+                self?.appearanceMode = newMode
             }
         }
     }
