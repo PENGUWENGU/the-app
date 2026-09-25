@@ -2,86 +2,98 @@ name: Build unsigned IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      build_configuration:
+        description: Build configuration
+        required: true
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build app
+      - name: Select Xcode 26.6
         run: |
-          set -e
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate --spec project.yml
+
+      - name: Build unsigned app
+        run: |
+          set -o pipefail
 
           xcodebuild \
             -project Locus.xcodeproj \
             -scheme Locus \
-            -configuration Release \
+            -configuration "${{ inputs.build_configuration }}" \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$PWD/build" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            clean build
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build.log
 
-      - name: Find app
+      - name: Verify app
         run: |
-          set -e
+          APP_PATH="build/Build/Products/${{ inputs.build_configuration }}-iphoneos/Locus.app"
 
-          echo "Searching for built apps..."
-
-          find build -type d -name "*.app" -print
-
-          APP_PATH=$(find build -type d -name "Locus.app" | head -n 1)
-
-          if [ -z "$APP_PATH" ]; then
-            echo "ERROR: No Locus.app found."
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: Locus.app was not created."
             exit 1
           fi
 
-          echo "Found: $APP_PATH"
+          echo "Found:"
+          ls -la "$APP_PATH"
 
-          echo "App size:"
-          du -sh "$APP_PATH"
+      - name: Verify unsigned
+        run: |
+          APP_PATH="build/Build/Products/${{ inputs.build_configuration }}-iphoneos/Locus.app"
 
-          echo "App contents:"
-          find "$APP_PATH" -maxdepth 2 -type f | head -50
+          echo "Checking code signature..."
 
-          echo "$APP_PATH" > app_path.txt
+          if codesign -dv "$APP_PATH" 2>&1 | grep -q "Authority="; then
+            echo "ERROR: App appears to be signed."
+            exit 1
+          fi
+
+          echo "No signing authority found."
 
       - name: Create IPA
         run: |
-          set -e
-
-          APP_PATH=$(cat app_path.txt)
+          APP_PATH="build/Build/Products/${{ inputs.build_configuration }}-iphoneos/Locus.app"
 
           rm -rf Payload
           mkdir Payload
 
           cp -R "$APP_PATH" Payload/Locus.app
 
-          echo "Payload contents:"
-          ls -lah Payload
-          du -sh Payload/Locus.app
-
-          rm -f LocusPlus-unsigned.ipa
-
-          zip -r -9 LocusPlus-unsigned.ipa Payload
+          zip -qry LocusPlus-unsigned.ipa Payload
 
           echo "IPA created:"
           ls -lh LocusPlus-unsigned.ipa
-
-          IPA_SIZE=$(stat -f%z LocusPlus-unsigned.ipa)
-
-          if [ "$IPA_SIZE" -lt 1000000 ]; then
-            echo "ERROR: IPA is suspiciously small: $IPA_SIZE bytes"
-            exit 1
-          fi
-
-          echo "IPA looks valid."
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
@@ -89,3 +101,11 @@ jobs:
           name: LocusPlus-unsigned
           path: LocusPlus-unsigned.ipa
           if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: build.log
+          if-no-files-found: ignore
