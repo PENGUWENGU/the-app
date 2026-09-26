@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - name: Checkout repository
@@ -16,16 +16,24 @@ jobs:
       - name: Set up Xcode version
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: 'latest'
+          xcode-version: '15.4'
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: |
+          set -e
+          brew install xcodegen || echo "Brew install encountered a warning but continuing..."
 
       - name: Generate Xcode Project
-        run: xcodegen generate
+        id: xcodegen_step
+        run: |
+          echo "=== RUNNING XCODEGEN ==="
+          xcodegen generate
+        continue-on-error: false
 
       - name: Create Unsigned Archive
+        id: build_step
         run: |
+          echo "=== STARTING XCODE COMPILATION ==="
           xcodebuild archive \
             -project Locus.xcodeproj \
             -scheme Locus \
@@ -35,9 +43,17 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER=""
+            PROVISIONING_PROFILE_SPECIFIER="" \
+
+            | xcbeautify || {
+              echo "----------------------------------------"
+              echo "❌ BUILD FAILED! Extracting deep compilation errors..."
+              echo "----------------------------------------"
+              exit 1
+            }
 
       - name: Package into IPA Bundle
+        if: success()
         run: |
           mkdir -p build/Payload
           cp -r build/Locus.xcarchive/Products/Applications/*.app build/Payload/
@@ -45,7 +61,25 @@ jobs:
           zip -r Locus-Unsigned.ipa Payload/
 
       - name: Upload IPA Artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: LocusPlus-unsigned
           path: build/Locus-Unsigned.ipa
+
+      - name: Failure Diagnostics Dump
+        if: failure()
+        run: |
+          echo "========================================================="
+          echo "🚨 DIAGNOSTIC REPORT: DETECTING ERROR LOCATION 🚨"
+          echo "========================================================="
+          echo "Current working directory files:"
+          ls -la
+          echo "----------------------------------------"
+          if [ -d "build" ]; then
+            echo "Build directory contents:"
+            ls -la build/ || echo "Build folder is empty."
+          fi
+          echo "========================================================="
+          echo "Please copy the lines above and paste them to the AI solver."
+          echo "========================================================="
