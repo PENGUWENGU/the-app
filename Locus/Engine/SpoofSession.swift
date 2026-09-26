@@ -52,6 +52,7 @@ public final class SpoofSession: ObservableObject {
 
     // MARK: - Route Simulation & ETA tracking
     @Published public var isRouteActive: Bool = false
+    @Published public var activeRouteCoordinates: [CLLocationCoordinate2D] = []
     @Published public var routeProgress: Double = 0.0 // 0.0 ... 1.0
     @Published public var routeDistanceRemainingMeters: CLLocationDistance = 0
     @Published public var routeTimeRemainingSeconds: TimeInterval = 0
@@ -247,6 +248,7 @@ public final class SpoofSession: ObservableObject {
         routeDistanceRemainingMeters = totalDist
         routeTimeRemainingSeconds = totalDist / max(0.8, currentSpeedMPS)
         routeProgress = 0.0
+        activeRouteCoordinates = coordinates
         isRouteActive = true
 
         let speedMPS = currentSpeedMPS

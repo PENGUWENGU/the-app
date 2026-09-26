@@ -4,7 +4,7 @@ import UIKit
 import UserNotifications
 import CoreLocation
 
-/// Runs idevice's iOS 27+ pairable-host flow on-device.
+/// Runs idevice's iOS 26+ pairable-host flow on-device.
 ///
 /// Advertising uses Network.framework NWListener (Bonjour). Inbound TCP is
 /// relayed to the Rust pairable-host on loopback. The 6-digit PIN is created

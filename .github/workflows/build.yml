@@ -1,0 +1,186 @@
+name: Build Unsigned IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Build configuration'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Release
+          - Debug
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build-unsigned-ipa:
+    name: Build Locus Unsigned IPA
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          submodules: recursive
+
+      - name: Setup Rust & iOS Target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "Vendor/idevice/libidevice_ffi.a" ]; then
+            echo "Building libidevice_ffi.a from source for aarch64-apple-ios..."
+            rustup target add aarch64-apple-ios || true
+            mkdir -p /tmp/idevice_src
+            git clone --depth 1 https://github.com/jkcoxson/idevice.git /tmp/idevice_src
+            cd /tmp/idevice_src
+            if [ -d "ffi" ]; then
+              cd ffi
+            fi
+            cargo build --release --target aarch64-apple-ios
+            mkdir -p "$GITHUB_WORKSPACE/Vendor/idevice"
+            find /tmp/idevice_src/target/aarch64-apple-ios/release -name "libidevice_ffi.a" -o -name "libidevice*.a" | head -n 1 | xargs -I {} cp {} "$GITHUB_WORKSPACE/Vendor/idevice/libidevice_ffi.a"
+            cd "$GITHUB_WORKSPACE"
+          else
+            echo "Vendor/idevice/libidevice_ffi.a already present."
+          fi
+          test -f "Vendor/idevice/libidevice_ffi.a" && echo "Verified libidevice_ffi.a." || echo "Proceeding with build..."
+
+      - name: Select Xcode Version
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Scanning available Xcode installations in /Applications:"
+          ls -1d /Applications/Xcode*.app 2>/dev/null || true
+
+          XCODE=""
+          for candidate in \
+            "/Applications/Xcode_26.6.app" \
+            "/Applications/Xcode_26.6.0.app" \
+            "/Applications/Xcode_16.4.app" \
+            "/Applications/Xcode_16.3.app" \
+            "/Applications/Xcode_16.2.app" \
+            "/Applications/Xcode_16.1.app" \
+            "/Applications/Xcode_16.0.app" \
+            "/Applications/Xcode.app"; do
+            if [ -d "$candidate" ]; then
+              XCODE="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$XCODE" ]; then
+            XCODE=$(find /Applications -maxdepth 1 -name "Xcode*.app" | sort -V | tail -n 1)
+          fi
+
+          if [ -n "$XCODE" ] && [ -d "$XCODE" ]; then
+            echo "Selecting Xcode: $XCODE"
+            sudo xcode-select -s "$XCODE"
+          fi
+
+          echo "Active Developer Directory: $(xcode-select -p)"
+          xcodebuild -version
+          echo
+          echo "Installed iOS SDKs:"
+          xcodebuild -showsdks | grep -i iphoneos || true
+
+      - name: Setup XcodeGen (Optional Regeneration)
+        shell: bash
+        run: |
+          set -eo pipefail
+          if command -v xcodegen >/dev/null 2>&1; then
+            echo "XcodeGen available: $(xcodegen version)"
+            xcodegen generate --spec project.yml || echo "XcodeGen fallback: keeping existing Locus.xcodeproj"
+          elif command -v brew >/dev/null 2>&1; then
+            echo "Installing XcodeGen via Homebrew..."
+            brew install xcodegen || true
+            if command -v xcodegen >/dev/null 2>&1; then
+              xcodegen generate --spec project.yml || echo "XcodeGen fallback: keeping existing Locus.xcodeproj"
+            fi
+          fi
+          test -d Locus.xcodeproj
+          echo "Xcode project ready."
+
+      - name: Clean build directory
+        shell: bash
+        run: |
+          rm -rf build Payload *.ipa
+          mkdir -p build
+
+      - name: Build unsigned iOS app
+        shell: bash
+        run: |
+          set -o pipefail
+          CONFIG="${{ inputs.configuration || 'Release' }}"
+          echo "Building Locus scheme in $CONFIG configuration..."
+
+          xcodebuild \
+            -project Locus.xcodeproj \
+            -scheme Locus \
+            -configuration "$CONFIG" \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/build" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build.log
+
+      - name: Locate and Package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP=$(find build -name "Locus.app" -type d | head -n 1)
+          if [ -z "$APP" ] || [ ! -d "$APP" ]; then
+            echo "::error::Locus.app was not produced by xcodebuild."
+            echo "Listing build output:"
+            find build -maxdepth 5 || true
+            exit 1
+          fi
+
+          echo "Found Locus.app at: $APP"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP" Payload/Locus.app
+
+          rm -f LocusPlus-unsigned.ipa Locus-unsigned.ipa
+          zip -qry LocusPlus-unsigned.ipa Payload
+          cp LocusPlus-unsigned.ipa Locus-unsigned.ipa
+
+          test -f LocusPlus-unsigned.ipa
+          echo "IPA created successfully:"
+          ls -lh LocusPlus-unsigned.ipa
+
+      - name: Verify IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -t LocusPlus-unsigned.ipa
+          echo "Verified IPA integrity."
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocusPlus-unsigned-IPA
+          path: LocusPlus-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocusPlus-build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7

@@ -76,6 +76,9 @@ public struct SavedRoutesModalView: View {
             } message: { route in
                 Text("Are you sure you want to delete this saved route? This cannot be undone.")
             }
+            .sheet(item: $previewRoute) { route in
+                RouteDetailView(route: route, onLoadRoute: onSelectRoute)
+            }
         }
     }
 
@@ -133,6 +136,22 @@ public struct SavedRoutesModalView: View {
                     }
 
                     Spacer()
+
+                    Button {
+                        previewRoute = route
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chart.xyaxis.line")
+                            Text("Details")
+                        }
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundStyle(LocusTheme.accent)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
 
                     Button {
                         onSelectRoute?(route)

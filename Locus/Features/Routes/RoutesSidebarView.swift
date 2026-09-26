@@ -15,6 +15,7 @@ public struct RoutesSidebarView: View {
     @State private var searchQuery: String = ""
     @State private var routeToDelete: SavedRoute?
     @State private var showDeleteConfirm = false
+    @State private var selectedRouteForDetails: SavedRoute? = nil
 
     public init(isOpen: Binding<Bool>, onLoadRoute: ((SavedRoute) -> Void)? = nil) {
         self._isOpen = isOpen
@@ -86,6 +87,18 @@ public struct RoutesSidebarView: View {
             }
         } message: { route in
             Text("Are you sure you want to delete this saved route from storage?")
+        }
+        .sheet(item: $selectedRouteForDetails) { route in
+            RouteDetailView(
+                route: route,
+                onLoadRoute: { r in
+                    loadRoute(r)
+                },
+                onFollowRoute: { r in
+                    session.followRoute(r.clCoordinates, pairing: pairing)
+                    withAnimation { isOpen = false }
+                }
+            )
         }
     }
 
@@ -198,6 +211,16 @@ public struct RoutesSidebarView: View {
                     .foregroundStyle(.secondary)
 
                 Spacer()
+
+                // Details & D3 Chart
+                Button {
+                    selectedRouteForDetails = route
+                } label: {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.caption)
+                        .foregroundStyle(LocusTheme.accent)
+                }
+                .buttonStyle(.plain)
 
                 // Export GPX
                 if let url = route.exportToGPXFile() {

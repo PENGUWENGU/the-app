@@ -15,6 +15,7 @@ public struct RouteManagerModal: View {
     @State private var renameText: String = ""
     @State private var routeToDelete: SavedRoute?
     @State private var showDeleteConfirmation: Bool = false
+    @State private var selectedRouteForDetails: SavedRoute? = nil
 
     public init(onSelectRoute: ((SavedRoute) -> Void)? = nil) {
         self.onSelectRoute = onSelectRoute
@@ -80,6 +81,9 @@ public struct RouteManagerModal: View {
             } message: { route in
                 Text("Are you sure you want to delete \"\(route.name)\"? This action cannot be undone.")
             }
+            .sheet(item: $selectedRouteForDetails) { route in
+                RouteDetailView(route: route, onLoadRoute: onSelectRoute)
+            }
         }
     }
 
@@ -143,6 +147,16 @@ public struct RouteManagerModal: View {
 
                     // Action buttons
                     HStack(spacing: 8) {
+                        // Details & D3 Chart Button
+                        Button {
+                            selectedRouteForDetails = route
+                        } label: {
+                            Image(systemName: "chart.xyaxis.line")
+                                .font(.title3)
+                                .foregroundStyle(LocusTheme.accent)
+                        }
+                        .buttonStyle(.plain)
+
                         // Export GPX ShareLink
                         if let gpxUrl = route.exportToGPXFile() {
                             ShareLink(item: gpxUrl) {

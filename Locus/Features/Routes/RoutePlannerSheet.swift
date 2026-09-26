@@ -11,19 +11,23 @@ public struct RoutePlannerSheet: View {
     public var onExportGPX: () -> Void
     public var onUseDrawn: () -> Void
     public var onSelectSavedRoute: ((SavedRoute) -> Void)?
+    public var routeCoords: [CLLocationCoordinate2D] = []
 
     @EnvironmentObject private var session: SpoofSession
+    @EnvironmentObject private var pairing: PairingStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var showSaveRouteAlert = false
     @State private var newRouteName = ""
     @State private var routeToRename: SavedRoute?
     @State private var renameRouteText = ""
+    @State private var selectedRouteForDetails: SavedRoute? = nil
 
     public init(
         start: Binding<CLLocationCoordinate2D?>,
         end: Binding<CLLocationCoordinate2D?>,
         isRouting: Binding<Bool>,
+        routeCoords: [CLLocationCoordinate2D] = [],
         onBuild: @escaping () -> Void,
         onPlay: @escaping () -> Void,
         onImportGPX: @escaping () -> Void,
@@ -34,6 +38,7 @@ public struct RoutePlannerSheet: View {
         self._start = start
         self._end = end
         self._isRouting = isRouting
+        self.routeCoords = routeCoords
         self.onBuild = onBuild
         self.onPlay = onPlay
         self.onImportGPX = onImportGPX
@@ -178,6 +183,22 @@ public struct RoutePlannerSheet: View {
 
                                 Spacer()
 
+                                Button {
+                                    selectedRouteForDetails = route
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "chart.xyaxis.line")
+                                        Text("Details")
+                                    }
+                                    .font(.caption.weight(.medium))
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white.opacity(0.08))
+                                    .foregroundStyle(LocusTheme.accent)
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+
                                 Button("Load") {
                                     onSelectSavedRoute?(route)
                                     dismiss()
@@ -244,6 +265,15 @@ public struct RoutePlannerSheet: View {
                 Button("Cancel", role: .cancel) {
                     routeToRename = nil
                 }
+            }
+            .sheet(item: $selectedRouteForDetails) { route in
+                RouteDetailView(
+                    route: route,
+                    onLoadRoute: onSelectSavedRoute,
+                    onFollowRoute: { r in
+                        session.followRoute(r.clCoordinates, pairing: pairing)
+                    }
+                )
             }
         }
     }

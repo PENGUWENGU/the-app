@@ -1,554 +1,519 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Navigation, 
-  Compass, 
-  MapPin, 
-  Settings as SettingsIcon, 
-  Star, 
-  Play, 
-  Square, 
-  Trash2, 
-  Download, 
-  Search, 
-  X, 
-  Sun, 
-  Moon, 
-  Laptop, 
-  Copy, 
-  Check, 
-  Clock, 
-  Gauge, 
-  Layers, 
+import {
+  MapPin,
+  Navigation,
+  Play,
+  Square,
+  Compass,
+  Settings,
+  Star,
+  Bookmark,
+  ChevronRight,
+  Layers,
+  Search,
+  Crosshair,
+  Sliders,
+  Radio,
   Share2,
-  FolderGit2
+  X,
+  Plus,
+  RefreshCw,
+  FolderOpen,
+  Route,
+  Zap,
+  Gauge,
+  Activity,
+  ArrowUpRight,
+  ShieldCheck,
+  Check
 } from 'lucide-react';
-import L from 'leaflet';
 
-interface Waypoint {
+interface Coordinate {
   lat: number;
   lng: number;
 }
 
-interface SavedRoute {
-  id: string;
-  name: string;
-  distanceMeters: number;
-  waypoints: Waypoint[];
-  createdAt: string;
-}
-
-const DEFAULT_ROUTES: SavedRoute[] = [
-  {
-    id: 'route-apple-park',
-    name: 'Apple Park Perimeter Loop',
-    distanceMeters: 2840,
-    createdAt: new Date().toLocaleDateString(),
-    waypoints: [
-      { lat: 37.3349, lng: -122.0090 },
-      { lat: 37.3365, lng: -122.0065 },
-      { lat: 37.3350, lng: -122.0030 },
-      { lat: 37.3325, lng: -122.0040 },
-      { lat: 37.3315, lng: -122.0075 },
-      { lat: 37.3349, lng: -122.0090 }
-    ]
-  },
-  {
-    id: 'route-embarcadero',
-    name: 'SF Embarcadero Waterfront',
-    distanceMeters: 4120,
-    createdAt: new Date().toLocaleDateString(),
-    waypoints: [
-      { lat: 37.7955, lng: -122.3937 },
-      { lat: 37.8010, lng: -122.3975 },
-      { lat: 37.8080, lng: -122.4098 },
-      { lat: 37.8085, lng: -122.4172 }
-    ]
-  }
+const PRESET_PLACES = [
+  { name: 'Apple Park (Cupertino)', lat: 37.3349, lng: -122.0090, desc: '1 Apple Park Way, Cupertino, CA' },
+  { name: 'Tokyo Tower', lat: 35.6586, lng: 139.7454, desc: 'Minato City, Tokyo, Japan' },
+  { name: 'Central Park (NYC)', lat: 40.785091, lng: -73.968285, desc: 'New York, NY 10024' },
+  { name: 'Sydney Opera House', lat: -33.8568, lng: 151.2153, desc: 'Bennelong Point, Sydney NSW' },
+  { name: 'Eiffel Tower', lat: 48.8584, lng: 2.2945, desc: 'Champ de Mars, Paris, France' }
 ];
 
 export default function App() {
-  // Navigation & Location state
-  const [currentLoc, setCurrentLoc] = useState<Waypoint>({ lat: 37.3349, lng: -122.0090 });
-  const [pin, setPin] = useState<Waypoint | null>(null);
-  const [isSpoofing, setIsSpoofing] = useState<boolean>(false);
-  const [isRouteActive, setIsRouteActive] = useState<boolean>(false);
-  const [activeRouteIndex, setActiveRouteIndex] = useState<number>(0);
-  const [activeWaypoints, setActiveWaypoints] = useState<Waypoint[]>([]);
+  // Map State
+  const [pin, setPin] = useState<Coordinate>({ lat: 37.3349, lng: -122.0090 });
+  const [simulated, setSimulated] = useState<Coordinate | null>(null);
+  const [isSpoofing, setIsSpoofing] = useState(false);
+  const [speedMPS, setSpeedMPS] = useState(1.4); // Walk (5 km/h)
+  const [activeTab, setActiveTab] = useState<'map' | 'routes' | 'places' | 'settings'>('map');
+  const [mapStyle, setMapStyle] = useState<'standard' | 'hybrid' | 'imagery'>('standard');
+  const [theme, setTheme] = useState<'mint' | 'cyberpunk' | 'electric'>('mint');
 
-  // Travel speed & mode
-  const [travelMode, setTravelMode] = useState<'walk' | 'run' | 'cycle' | 'drive'>('walk');
-  const [customSpeed, setCustomSpeed] = useState<number>(4); // km/h
-  const [speedUnit, setSpeedUnit] = useState<'kmh' | 'mph' | 'ms'>('kmh');
-  const [joystickActive, setJoystickActive] = useState<boolean>(false);
+  // Route State
+  const [routeCoords, setRouteCoords] = useState<Coordinate[]>([]);
+  const [isRouteActive, setIsRouteActive] = useState(false);
+  const [routeProgress, setRouteProgress] = useState(0);
+  const [showRouteSheet, setShowRouteSheet] = useState(false);
+  const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [showPlacesSheet, setShowPlacesSheet] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [savedPlaces, setSavedPlaces] = useState(PRESET_PLACES);
 
-  // Modals & Panels
-  const [showSidebar, setShowSidebar] = useState<boolean>(false);
-  const [showSettings, setShowSettings] = useState<boolean>(false);
-  const [showPlaces, setShowPlaces] = useState<boolean>(false);
-  const [showETACalc, setShowETACalc] = useState<boolean>(false);
-  const [showBuildInfo, setShowBuildInfo] = useState<boolean>(false);
+  // Joystick State
+  const [joystickVector, setJoystickVector] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDraggingJoystick, setIsDraggingJoystick] = useState(false);
+  const joystickCenterRef = useRef<HTMLDivElement>(null);
 
-  // Appearance
-  const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('dark');
-  const [copiedCSS, setCopiedCSS] = useState<boolean>(false);
-
-  // Saved Routes & Favorites from localStorage
-  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>(() => {
-    try {
-      const stored = localStorage.getItem('locus_saved_routes');
-      return stored ? JSON.parse(stored) : DEFAULT_ROUTES;
-    } catch {
-      return DEFAULT_ROUTES;
-    }
-  });
-
-  const [routeSearch, setRouteSearch] = useState<string>('');
-
-  // Leaflet references
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
-  const pinMarkerRef = useRef<L.Marker | null>(null);
-  const routePolylineRef = useRef<L.Polyline | null>(null);
-
-  // Sync saved routes to localStorage
+  // Spoof Simulation Loop
   useEffect(() => {
-    try {
-      localStorage.setItem('locus_saved_routes', JSON.stringify(savedRoutes));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [savedRoutes]);
-
-  // Sync Theme Mode
-  useEffect(() => {
-    const root = document.documentElement;
-    if (themeMode === 'light') {
-      root.classList.add('light');
-      root.classList.remove('dark');
-    } else {
-      root.classList.add('dark');
-      root.classList.remove('light');
-    }
-  }, [themeMode]);
-
-  // Initialize Map
-  useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
-
-    const map = L.map(mapContainerRef.current, {
-      zoomControl: false,
-      attributionControl: false
-    }).setView([currentLoc.lat, currentLoc.lng], 16);
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19
-    }).addTo(map);
-
-    L.control.zoom({ position: 'topright' }).addTo(map);
-
-    // Click handler for dropping teleport pin
-    map.on('click', (e: L.LeafletMouseEvent) => {
-      const clicked = { lat: e.latlng.lat, lng: e.latlng.lng };
-      setPin(clicked);
-    });
-
-    mapRef.current = map;
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-  }, []);
-
-  // Sync current location marker
-  useEffect(() => {
-    if (!mapRef.current) return;
-
-    const locIcon = L.divIcon({
-      className: 'custom-loc-marker',
-      html: `
-        <div style="
-          width: 22px; 
-          height: 22px; 
-          background: #22E58B; 
-          border: 3px solid white; 
-          border-radius: 50%; 
-          box-shadow: 0 0 12px rgba(34,229,139,0.8);
-        "></div>
-      `,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11]
-    });
-
-    if (markerRef.current) {
-      markerRef.current.setLatLng([currentLoc.lat, currentLoc.lng]);
-    } else {
-      markerRef.current = L.marker([currentLoc.lat, currentLoc.lng], { icon: locIcon }).addTo(mapRef.current);
-    }
-  }, [currentLoc]);
-
-  // Sync teleport pin marker
-  useEffect(() => {
-    if (!mapRef.current) return;
-
-    if (pin) {
-      const pinIcon = L.divIcon({
-        className: 'custom-pin-marker',
-        html: `
-          <div style="
-            width: 24px; 
-            height: 24px; 
-            background: #EF4444; 
-            border: 3px solid white; 
-            border-radius: 50%; 
-            box-shadow: 0 0 14px rgba(239,68,68,0.9);
-          "></div>
-        `,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      });
-
-      if (pinMarkerRef.current) {
-        pinMarkerRef.current.setLatLng([pin.lat, pin.lng]);
-      } else {
-        pinMarkerRef.current = L.marker([pin.lat, pin.lng], { icon: pinIcon }).addTo(mapRef.current);
-      }
-    } else if (pinMarkerRef.current) {
-      pinMarkerRef.current.remove();
-      pinMarkerRef.current = null;
-    }
-  }, [pin]);
-
-  // Sync active route polyline
-  useEffect(() => {
-    if (!mapRef.current) return;
-
-    if (activeWaypoints.length > 0) {
-      const latlngs = activeWaypoints.map(w => [w.lat, w.lng] as [number, number]);
-      if (routePolylineRef.current) {
-        routePolylineRef.current.setLatLngs(latlngs);
-      } else {
-        routePolylineRef.current = L.polyline(latlngs, {
-          color: '#22E58B',
-          weight: 5,
-          opacity: 0.85,
-          dashArray: '8, 8'
-        }).addTo(mapRef.current);
-      }
-    } else if (routePolylineRef.current) {
-      routePolylineRef.current.remove();
-      routePolylineRef.current = null;
-    }
-  }, [activeWaypoints]);
-
-  // Route playback simulation loop
-  useEffect(() => {
-    if (!isRouteActive || activeWaypoints.length < 2) return;
+    if (!isSpoofing) return;
 
     const interval = setInterval(() => {
-      setActiveRouteIndex(prev => {
-        const next = prev + 1;
-        if (next >= activeWaypoints.length) {
-          setIsRouteActive(false);
-          return 0;
-        }
-        setCurrentLoc(activeWaypoints[next]);
-        return next;
-      });
-    }, 1000);
+      // Joystick movement
+      if (joystickVector.x !== 0 || joystickVector.y !== 0) {
+        setSimulated(prev => {
+          const curr = prev || pin;
+          const latStep = (joystickVector.y * 0.00002 * (speedMPS / 1.4));
+          const lngStep = (joystickVector.x * 0.000025 * (speedMPS / 1.4));
+          return {
+            lat: Number((curr.lat + latStep).toFixed(6)),
+            lng: Number((curr.lng + lngStep).toFixed(6))
+          };
+        });
+      }
+
+      // Route playback
+      if (isRouteActive && routeCoords.length > 1) {
+        setRouteProgress(prev => {
+          const next = prev + 0.008;
+          if (next >= 1) {
+            setIsRouteActive(false);
+            return 0;
+          }
+          const index = Math.floor(next * (routeCoords.length - 1));
+          setSimulated(routeCoords[index]);
+          return next;
+        });
+      }
+    }, 100);
 
     return () => clearInterval(interval);
-  }, [isRouteActive, activeWaypoints]);
+  }, [isSpoofing, joystickVector, isRouteActive, routeCoords, speedMPS, pin]);
 
-  // Actions
-  const handleTeleport = () => {
-    if (!pin) return;
-    setCurrentLoc(pin);
-    setIsSpoofing(true);
-    setPin(null);
+  // Handle Map Click to Drop Pin
+  const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isRouteActive) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+
+    // Approximate lat/lng around current view center
+    const center = simulated || pin;
+    const newLat = center.lat + (0.5 - y) * 0.012;
+    const newLng = center.lng + (x - 0.5) * 0.016;
+
+    setPin({ lat: Number(newLat.toFixed(6)), lng: Number(newLng.toFixed(6)) });
   };
 
-  const handleStopSpoofing = () => {
+  // Start Instant Spoof
+  const handleStartSpoof = () => {
+    setSimulated(pin);
+    setIsSpoofing(true);
+  };
+
+  const handleStopSpoof = () => {
     setIsSpoofing(false);
     setIsRouteActive(false);
   };
 
-  const handleLoadRoute = (route: SavedRoute) => {
-    setActiveWaypoints(route.waypoints);
-    setActiveRouteIndex(0);
-    setCurrentLoc(route.waypoints[0]);
-    setIsSpoofing(true);
+  // Build Road Route
+  const handleBuildRoute = () => {
+    const start = simulated || pin;
+    const dest = { lat: start.lat + 0.0045, lng: start.lng + 0.0065 };
+    const intermediate1 = { lat: start.lat + 0.0018, lng: start.lng + 0.0032 };
+    const intermediate2 = { lat: start.lat + 0.0035, lng: start.lng + 0.0048 };
+    
+    setRouteCoords([start, intermediate1, intermediate2, dest]);
+    setShowRouteSheet(false);
     setIsRouteActive(true);
-    setShowSidebar(false);
-    if (mapRef.current) {
-      mapRef.current.flyTo([route.waypoints[0].lat, route.waypoints[0].lng], 16);
-    }
-  };
-
-  const handleDeleteRoute = (id: string) => {
-    setSavedRoutes(prev => prev.filter(r => r.id !== id));
-  };
-
-  const handleExportGPX = (route: SavedRoute) => {
-    const gpxData = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Locus">
-  <trk>
-    <name>${route.name}</name>
-    <trkseg>
-${route.waypoints.map(w => `      <trkpt lat="${w.lat}" lon="${w.lng}"></trkpt>`).join('\n')}
-    </trkseg>
-  </trk>
-</gpx>`;
-    const blob = new Blob([gpxData], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${route.name.replace(/\s+/g, '_')}.gpx`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Joystick move delta
-  const handleJoystickMove = (dx: number, dy: number) => {
-    const speedFactor = customSpeed / 3600 / 111.32; // rough lat/deg per sec
-    setCurrentLoc(prev => ({
-      lat: prev.lat + dy * speedFactor * 0.5,
-      lng: prev.lng + dx * speedFactor * 0.5
-    }));
     setIsSpoofing(true);
+    setRouteProgress(0);
   };
 
-  // ETA Calculation
-  const selectedDistance = activeWaypoints.length > 1 ? 2840 : 1500;
-  const effectiveSpeedKmh = speedUnit === 'mph' ? customSpeed * 1.60934 : speedUnit === 'ms' ? customSpeed * 3.6 : customSpeed;
-  const durationSeconds = effectiveSpeedKmh > 0 ? (selectedDistance / 1000 / effectiveSpeedKmh) * 3600 : 0;
-  const arrivalDate = new Date(Date.now() + durationSeconds * 1000);
+  // Joystick pointer events
+  const handleJoystickMove = (clientX: number, clientY: number) => {
+    if (!joystickCenterRef.current) return;
+    const rect = joystickCenterRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
 
-  const filteredRoutes = savedRoutes.filter(r => 
-    r.name.toLowerCase().includes(routeSearch.toLowerCase())
-  );
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    const maxRadius = 38;
+
+    const clampedDist = Math.min(dist, maxRadius);
+    const angle = Math.atan2(dy, dx);
+
+    const nx = (Math.cos(angle) * clampedDist) / maxRadius;
+    const ny = -(Math.sin(angle) * clampedDist) / maxRadius;
+
+    setJoystickVector({ x: nx, y: ny });
+  };
+
+  const currentCoords = simulated || pin;
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-black select-none">
-      {/* Leaflet Map Canvas */}
-      <div ref={mapContainerRef} className="w-full h-full z-0" />
+    <div className="flex h-screen w-full select-none bg-[#090D14] text-white font-sans overflow-hidden">
+      {/* Sidebar Navigation */}
+      {showSidebar && (
+        <div className="w-80 h-full bg-[#111622]/95 backdrop-blur-2xl border-r border-white/10 flex flex-col z-30 animate-in slide-in-from-left duration-200">
+          <div className="p-4 border-b border-white/10 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 to-teal-400 flex items-center justify-center font-bold text-black text-sm">
+                L
+              </div>
+              <span className="font-bold tracking-tight text-lg">Locus iOS</span>
+            </div>
+            <button 
+              onClick={() => setShowSidebar(false)}
+              className="p-1.5 rounded-full hover:bg-white/10 text-white/70"
+            >
+              <X size={18} />
+            </button>
+          </div>
 
-      {/* Top Status Bar */}
-      <div className="absolute top-4 left-4 right-4 z-20 flex justify-center pointer-events-none">
-        <div className="locus-glass pointer-events-auto rounded-full px-5 py-2.5 flex items-center gap-3 text-sm shadow-xl">
-          <div 
-            className={`w-2.5 h-2.5 rounded-full ${
-              isRouteActive ? 'bg-accent animate-pulse' : isSpoofing ? 'bg-accent' : 'bg-gray-400'
-            }`} 
-          />
-          <span className="font-semibold">
-            {isRouteActive 
-              ? `Route Active • Step ${activeRouteIndex + 1}/${activeWaypoints.length}` 
-              : isSpoofing 
-              ? 'Spoofing Active' 
-              : 'Standby'}
-          </span>
-          <span className="text-xs font-mono text-gray-400">
-            {currentLoc.lat.toFixed(4)}, {currentLoc.lng.toFixed(4)}
-          </span>
-        </div>
-      </div>
+          <div className="p-3 overflow-y-auto flex-1 space-y-4">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-white/40 px-3 mb-2">Saved Routes</div>
+              <div className="space-y-1">
+                <div 
+                  onClick={handleBuildRoute}
+                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-white/5 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <Route size={16} className="text-cyan-400" />
+                    <div>
+                      <div className="font-medium text-sm">Cupertino Loop</div>
+                      <div className="text-xs text-white/50">1.8 km • 4 waypoints</div>
+                    </div>
+                  </div>
+                  <ChevronRight size={14} className="text-white/40" />
+                </div>
+              </div>
+            </div>
 
-      {/* Floating Quick Action Map Tools */}
-      <div className="absolute top-20 right-4 z-20 flex flex-col gap-2">
-        <button 
-          onClick={() => setShowETACalc(true)}
-          className="locus-glass w-11 h-11 rounded-full flex items-center justify-center hover:scale-105 transition"
-          title="Route ETA Calculator"
-        >
-          <Clock className="w-5 h-5 text-accent" />
-        </button>
-        <button 
-          onClick={() => setShowBuildInfo(true)}
-          className="locus-glass w-11 h-11 rounded-full flex items-center justify-center hover:scale-105 transition"
-          title="IPA & Build Pipeline"
-        >
-          <FolderGit2 className="w-5 h-5 text-accent-secondary" />
-        </button>
-      </div>
-
-      {/* Joystick Pad Overlay */}
-      {joystickActive && (
-        <div className="absolute bottom-28 right-6 z-30">
-          <div className="locus-glass rounded-full w-36 h-36 relative flex items-center justify-center border-2 border-accent/40 shadow-2xl">
-            <button 
-              className="absolute top-2 text-xs font-bold text-gray-300 hover:text-white"
-              onClick={() => handleJoystickMove(0, 1)}
-            >▲</button>
-            <button 
-              className="absolute bottom-2 text-xs font-bold text-gray-300 hover:text-white"
-              onClick={() => handleJoystickMove(0, -1)}
-            >▼</button>
-            <button 
-              className="absolute left-2 text-xs font-bold text-gray-300 hover:text-white"
-              onClick={() => handleJoystickMove(-1, 0)}
-            >◀</button>
-            <button 
-              className="absolute right-2 text-xs font-bold text-gray-300 hover:text-white"
-              onClick={() => handleJoystickMove(1, 0)}
-            >▶</button>
-            <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center shadow-lg text-black font-bold">
-              JOY
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-white/40 px-3 mb-2">Device Status</div>
+              <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-white/60">Tunnel</span>
+                  <span className="text-emerald-400 font-medium">LocalDevVPN (Connected)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/60">Pairing</span>
+                  <span className="text-cyan-400 font-medium">CoreDevice (Paired)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/60">Keep-Alive</span>
+                  <span className="text-emerald-400 font-medium">Silent Audio Running</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Bottom Floating Control Tray */}
-      <div className="absolute bottom-4 left-4 right-4 z-20 flex justify-center">
-        <div className="locus-glass rounded-3xl p-3 w-full max-w-md shadow-2xl flex flex-col gap-3">
-          {/* Mode & Speed Chips */}
-          <div className="flex items-center justify-between gap-1">
-            <div className="flex items-center gap-1 bg-black/30 p-1 rounded-full">
-              {(['walk', 'run', 'cycle', 'drive'] as const).map(mode => (
+      {/* Main Map Canvas Area */}
+      <div className="relative flex-1 h-full flex flex-col">
+        {/* Top Header Floating Island */}
+        <div className="absolute top-4 inset-x-4 z-20 flex items-center justify-between pointer-events-none">
+          {/* Top Left Menu / Status Pill */}
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="h-10 px-3 rounded-full bg-[#161B26]/85 backdrop-blur-xl border border-white/10 flex items-center gap-2 shadow-2xl hover:bg-white/10 active:scale-95 transition"
+            >
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-semibold tracking-wide">
+                {isRouteActive ? 'Route Simulating' : isSpoofing ? 'Spoof Active' : 'Not Spoofing'}
+              </span>
+            </button>
+          </div>
+
+          {/* Top Search Bar */}
+          <div className="flex-1 max-w-sm mx-3 pointer-events-auto">
+            <div className="relative flex items-center">
+              <Search className="absolute left-3 text-white/40" size={15} />
+              <input
+                type="text"
+                placeholder="Search places or coordinates..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-10 pl-9 pr-4 rounded-full bg-[#161B26]/85 backdrop-blur-xl border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-cyan-400/50 shadow-2xl"
+              />
+            </div>
+          </div>
+
+          {/* Top Right Quick Actions */}
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <button
+              onClick={() => setShowPlacesSheet(true)}
+              className="w-10 h-10 rounded-full bg-[#161B26]/85 backdrop-blur-xl border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition shadow-2xl text-amber-300"
+            >
+              <Star size={16} />
+            </button>
+            <button
+              onClick={() => setShowSettingsSheet(true)}
+              className="w-10 h-10 rounded-full bg-[#161B26]/85 backdrop-blur-xl border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition shadow-2xl text-white/80"
+            >
+              <Settings size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Map View Area */}
+        <div 
+          onClick={handleMapClick}
+          className="relative w-full h-full bg-[#0E131E] cursor-crosshair overflow-hidden"
+          style={{
+            backgroundImage: `
+              radial-gradient(circle at 50% 50%, rgba(34, 45, 66, 0.4) 0%, rgba(10, 14, 22, 1) 100%),
+              linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)
+            `,
+            backgroundSize: '100% 100%, 40px 40px, 40px 40px'
+          }}
+        >
+          {/* Map Vector Roads / Grid Mock */}
+          <div className="absolute inset-0 opacity-20 pointer-events-none">
+            <svg className="w-full h-full">
+              <path d="M 0 300 Q 400 250 800 500 T 1600 400" stroke="#59C7B8" strokeWidth="4" fill="none" />
+              <path d="M 200 0 Q 300 400 400 800 T 600 1200" stroke="#38BDF8" strokeWidth="3" fill="none" />
+              <path d="M 600 100 L 900 800" stroke="#A855F7" strokeWidth="2" strokeDasharray="6 4" fill="none" />
+            </svg>
+          </div>
+
+          {/* Active Route Polyline */}
+          {routeCoords.length > 1 && (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+              <polyline
+                points="300,280 420,340 540,310 650,420"
+                fill="none"
+                stroke="#06D6A0"
+                strokeWidth="6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="drop-shadow-[0_0_12px_rgba(6,214,160,0.8)]"
+              />
+            </svg>
+          )}
+
+          {/* Dropped Target Pin */}
+          <div 
+            className="absolute -translate-x-1/2 -translate-y-full transition-all duration-300 z-10 pointer-events-none"
+            style={{ left: '50%', top: '50%' }}
+          >
+            <div className="flex flex-col items-center group">
+              <div className="px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-white/20 text-[10px] font-mono text-cyan-300 mb-1 shadow-xl">
+                {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}
+              </div>
+              <div className="relative">
+                <MapPin className="text-red-500 fill-red-500 drop-shadow-[0_4px_12px_rgba(239,68,68,0.8)]" size={36} />
+              </div>
+            </div>
+          </div>
+
+          {/* Simulated Spoof Dot with Pulse Wave */}
+          {isSpoofing && (
+            <div 
+              className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-150 z-20 pointer-events-none"
+              style={{ left: '52%', top: '48%' }}
+            >
+              <div className="relative flex items-center justify-center">
+                <div className="absolute w-12 h-12 rounded-full bg-cyan-400/25 animate-ping" />
+                <div className="absolute w-8 h-8 rounded-full bg-cyan-400/40" />
+                <div className="w-4 h-4 rounded-full bg-cyan-400 border-2 border-white shadow-[0_0_15px_#22d3ee]" />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Floating Bottom Left Joystick */}
+        <div className="absolute left-6 bottom-24 z-20 select-none">
+          <div className="flex flex-col items-center gap-2">
+            {/* Speed Selector Buttons */}
+            <div className="flex items-center gap-1 p-1 rounded-full bg-[#161B26]/85 backdrop-blur-xl border border-white/10 shadow-2xl">
+              {[
+                { label: 'Walk', speed: 1.4 },
+                { label: 'Run', speed: 3.3 },
+                { label: 'Cycle', speed: 6.9 },
+                { label: 'Drive', speed: 16.6 }
+              ].map(item => (
                 <button
-                  key={mode}
-                  onClick={() => {
-                    setTravelMode(mode);
-                    setCustomSpeed(mode === 'walk' ? 4 : mode === 'run' ? 12 : mode === 'cycle' ? 25 : 65);
-                  }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition ${
-                    travelMode === mode ? 'bg-accent text-black font-bold' : 'text-gray-300 hover:text-white'
+                  key={item.label}
+                  onClick={() => setSpeedMPS(item.speed)}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition ${
+                    speedMPS === item.speed
+                      ? 'bg-cyan-500 text-black shadow-md'
+                      : 'text-white/60 hover:text-white'
                   }`}
                 >
-                  {mode}
+                  {item.label}
                 </button>
               ))}
             </div>
 
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-black/40 rounded-full text-xs font-mono">
-              <Gauge className="w-3.5 h-3.5 text-accent" />
-              <input 
-                type="number" 
-                value={customSpeed} 
-                onChange={e => setCustomSpeed(Math.max(1, Number(e.target.value)))}
-                className="w-10 bg-transparent text-right outline-none font-bold text-white" 
-              />
-              <span className="text-gray-400">{speedUnit}</span>
+            {/* Joystick Dial */}
+            <div
+              ref={joystickCenterRef}
+              onMouseDown={() => setIsDraggingJoystick(true)}
+              onMouseUp={() => {
+                setIsDraggingJoystick(false);
+                setJoystickVector({ x: 0, y: 0 });
+              }}
+              onMouseMove={(e) => {
+                if (isDraggingJoystick) handleJoystickMove(e.clientX, e.clientY);
+              }}
+              className="relative w-28 h-28 rounded-full bg-[#161B26]/90 backdrop-blur-2xl border border-white/15 shadow-2xl flex items-center justify-center cursor-grab active:cursor-grabbing"
+            >
+              {/* Direction crosshairs */}
+              <div className="absolute w-full h-[1px] bg-white/10" />
+              <div className="absolute h-full w-[1px] bg-white/10" />
+
+              {/* Center Thumb */}
+              <div
+                className="w-11 h-11 rounded-full bg-gradient-to-tr from-cyan-500 to-teal-400 border-2 border-white/80 shadow-[0_0_15px_rgba(6,214,160,0.6)] flex items-center justify-center transition-transform"
+                style={{
+                  transform: `translate(${joystickVector.x * 32}px, ${-joystickVector.y * 32}px)`
+                }}
+              >
+                <Compass size={16} className="text-black" />
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Action Row */}
-          <div className="flex items-center justify-between gap-2">
-            <button
-              onClick={() => setShowSidebar(true)}
-              className="w-11 h-11 rounded-full locus-glass flex items-center justify-center text-gray-300 hover:text-white hover:border-accent transition"
-              title="Saved GPX Routes"
-            >
-              <Layers className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => setShowSettings(true)}
-              className="w-11 h-11 rounded-full locus-glass flex items-center justify-center text-gray-300 hover:text-white hover:border-accent transition"
-              title="Settings & Appearance"
-            >
-              <SettingsIcon className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => setJoystickActive(!joystickActive)}
-              className={`px-4 py-2.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${
-                joystickActive ? 'bg-accent-secondary text-black' : 'locus-glass text-gray-300 hover:text-white'
-              }`}
-            >
-              <Compass className="w-4 h-4" />
-              {joystickActive ? 'Joy ON' : 'Joystick'}
-            </button>
-
-            {isSpoofing || isRouteActive ? (
+        {/* Floating Bottom Control Bar (Liquid Glass Pill) */}
+        <div className="absolute bottom-6 inset-x-6 z-20 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto h-16 px-4 rounded-3xl bg-[#161B26]/85 backdrop-blur-2xl border border-white/15 shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex items-center gap-3">
+            {/* Primary Spoof Button */}
+            {!isSpoofing ? (
               <button
-                onClick={handleStopSpoofing}
-                className="flex-1 py-2.5 rounded-full bg-danger text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-red-600 transition"
+                onClick={handleStartSpoof}
+                className="h-11 px-5 rounded-2xl bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-400 text-black font-bold text-xs flex items-center gap-2 shadow-lg shadow-cyan-500/20 active:scale-95 transition"
               >
-                <Square className="w-4 h-4 fill-current" />
-                Stop
+                <Zap size={16} className="fill-black" />
+                <span>Spoof Location</span>
               </button>
             ) : (
               <button
-                onClick={handleTeleport}
-                disabled={!pin}
-                className={`flex-1 py-2.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                  pin ? 'bg-accent text-black hover:opacity-90 shadow-lg' : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                }`}
+                onClick={handleStopSpoof}
+                className="h-11 px-5 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 font-bold text-xs flex items-center gap-2 shadow-lg active:scale-95 transition"
               >
-                <MapPin className="w-4 h-4" />
-                {pin ? 'Teleport' : 'Tap Map'}
+                <Square size={14} className="fill-red-400" />
+                <span>Stop Spoofing</span>
               </button>
             )}
+
+            <div className="w-[1px] h-6 bg-white/15" />
+
+            {/* Route Planner Button */}
+            <button
+              onClick={() => setShowRouteSheet(true)}
+              className="h-11 px-3.5 rounded-2xl hover:bg-white/10 active:scale-95 transition flex items-center gap-2 text-white/80 text-xs font-medium"
+            >
+              <Route size={16} className="text-cyan-400" />
+              <span>Routes</span>
+            </button>
+
+            {/* Center Recenter Button */}
+            <button
+              onClick={() => setPin({ lat: 37.3349, lng: -122.0090 })}
+              className="w-11 h-11 rounded-2xl hover:bg-white/10 active:scale-95 transition flex items-center justify-center text-white/80"
+            >
+              <Crosshair size={18} />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Routes Sidebar Modal */}
-      {showSidebar && (
-        <div className="fixed inset-0 z-50 flex">
-          <div 
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowSidebar(false)}
-          />
-          <div className="relative w-80 max-w-[85vw] h-full locus-glass border-r border-white/10 flex flex-col z-10 p-4">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+      {/* Route Planner Sheet Modal */}
+      {showRouteSheet && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-6">
+          <div className="w-full max-w-lg bg-[#141A26] rounded-t-3xl md:rounded-3xl border border-white/15 p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <Navigation className="w-5 h-5 text-accent" />
-                <h2 className="font-bold text-base">Saved GPX Routes</h2>
+                <Route className="text-cyan-400" size={20} />
+                <h3 className="font-bold text-base">Route Planner & GPX</h3>
               </div>
-              <button 
-                onClick={() => setShowSidebar(false)}
-                className="p-1 rounded-full hover:bg-white/10"
-              >
-                <X className="w-5 h-5" />
+              <button onClick={() => setShowRouteSheet(false)} className="p-1.5 rounded-full hover:bg-white/10">
+                <X size={18} />
               </button>
             </div>
 
-            <div className="my-3 flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-xl border border-white/10">
-              <Search className="w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search routes…"
-                value={routeSearch}
-                onChange={e => setRouteSearch(e.target.value)}
-                className="w-full bg-transparent text-xs text-white placeholder-gray-400 outline-none"
-              />
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+                <div className="text-xs text-white/50">Start Point</div>
+                <div className="font-mono text-xs">{currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}</div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+                <div className="text-xs text-white/50">Destination (Target Pin)</div>
+                <div className="font-mono text-xs">{pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}</div>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-              {filteredRoutes.map(route => (
-                <div key={route.id} className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-accent/40 transition">
-                  <div className="font-semibold text-sm line-clamp-1">{route.name}</div>
-                  <div className="text-xs text-gray-400 mt-1 flex items-center gap-2 font-mono">
-                    <span className="text-accent">{(route.distanceMeters / 1000).toFixed(2)} km</span>
-                    <span>•</span>
-                    <span>{route.waypoints.length} pts</span>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={handleBuildRoute}
+                className="flex-1 h-12 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-bold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-95 transition"
+              >
+                <Play size={16} className="fill-black" />
+                <span>Build Road Route & Play</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Saved Places Sheet Modal */}
+      {showPlacesSheet && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-6">
+          <div className="w-full max-w-lg bg-[#141A26] rounded-t-3xl md:rounded-3xl border border-white/15 p-6 space-y-4 shadow-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Star className="text-amber-400" size={20} />
+                <h3 className="font-bold text-base">Favorite Places</h3>
+              </div>
+              <button onClick={() => setShowPlacesSheet(false)} className="p-1.5 rounded-full hover:bg-white/10">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {savedPlaces.map((place) => (
+                <div
+                  key={place.name}
+                  onClick={() => {
+                    setPin({ lat: place.lat, lng: place.lng });
+                    setSimulated({ lat: place.lat, lng: place.lng });
+                    setIsSpoofing(true);
+                    setShowPlacesSheet(false);
+                  }}
+                  className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 cursor-pointer border border-white/5 flex items-center justify-between transition active:scale-98"
+                >
+                  <div>
+                    <div className="font-semibold text-sm">{place.name}</div>
+                    <div className="text-xs text-white/50">{place.desc}</div>
+                    <div className="font-mono text-[11px] text-cyan-400 mt-1">
+                      {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
+                    </div>
                   </div>
-                  <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-white/5">
-                    <button
-                      onClick={() => handleExportGPX(route)}
-                      className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10"
-                      title="Export GPX"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteRoute(route.id)}
-                      className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-white/10"
-                      title="Delete Route"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleLoadRoute(route)}
-                      className="px-3 py-1 rounded-full bg-accent text-black font-bold text-xs hover:opacity-90"
-                    >
-                      Load
-                    </button>
-                  </div>
+                  <ChevronRight size={16} className="text-white/40" />
                 </div>
               ))}
             </div>
@@ -556,145 +521,46 @@ ${route.waypoints.map(w => `      <trkpt lat="${w.lat}" lon="${w.lng}"></trkpt>`
         </div>
       )}
 
-      {/* Route ETA Calculator Modal */}
-      {showETACalc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowETACalc(false)} />
-          <div className="relative w-full max-w-sm locus-glass rounded-3xl p-5 border border-white/10 z-10 flex flex-col gap-4">
-            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+      {/* Settings Sheet Modal */}
+      {showSettingsSheet && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-6">
+          <div className="w-full max-w-lg bg-[#141A26] rounded-t-3xl md:rounded-3xl border border-white/15 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-accent" />
-                <h3 className="font-bold text-base">Route ETA Calculator</h3>
+                <Settings className="text-cyan-400" size={20} />
+                <h3 className="font-bold text-base">Locus Settings</h3>
               </div>
-              <button onClick={() => setShowETACalc(false)} className="p-1 rounded-full hover:bg-white/10">
-                <X className="w-5 h-5" />
+              <button onClick={() => setShowSettingsSheet(false)} className="p-1.5 rounded-full hover:bg-white/10">
+                <X size={18} />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-center">
-              <div className="p-3 bg-white/5 rounded-2xl">
-                <div className="text-xs text-gray-400">Duration</div>
-                <div className="text-lg font-bold text-accent font-mono mt-0.5">
-                  {Math.floor(durationSeconds / 60)}m {Math.floor(durationSeconds % 60)}s
+            <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex justify-between items-center">
+                <span>Theme Accent</span>
+                <div className="flex gap-2">
+                  {(['mint', 'cyberpunk', 'electric'] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setTheme(t)}
+                      className={`px-3 py-1 rounded-full uppercase text-[10px] font-bold ${
+                        theme === t ? 'bg-cyan-400 text-black' : 'bg-white/10'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
                 </div>
               </div>
-              <div className="p-3 bg-white/5 rounded-2xl">
-                <div className="text-xs text-gray-400">Arrival Time</div>
-                <div className="text-lg font-bold text-white font-mono mt-0.5">
-                  {arrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
-            </div>
 
-            <div className="flex items-center justify-between bg-black/40 px-3 py-2 rounded-xl text-xs">
-              <span className="text-gray-400">Speed Unit</span>
-              <div className="flex gap-1">
-                {(['kmh', 'mph', 'ms'] as const).map(u => (
-                  <button
-                    key={u}
-                    onClick={() => setSpeedUnit(u)}
-                    className={`px-2 py-0.5 rounded font-mono font-bold ${
-                      speedUnit === u ? 'bg-accent text-black' : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    {u}
-                  </button>
-                ))}
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex justify-between items-center">
+                <span>Background Keep-Alive</span>
+                <span className="text-emerald-400 font-semibold">Silent Audio Active</span>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Settings & Appearance Modal */}
-      {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
-          <div className="relative w-full max-w-sm locus-glass rounded-3xl p-5 border border-white/10 z-10 flex flex-col gap-4">
-            <div className="flex items-center justify-between pb-2 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <SettingsIcon className="w-5 h-5 text-accent" />
-                <h3 className="font-bold text-base">Appearance & Theme</h3>
-              </div>
-              <button onClick={() => setShowSettings(false)} className="p-1 rounded-full hover:bg-white/10">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-400 font-semibold mb-2 block">Interface Mode</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { mode: 'system', icon: Laptop, label: 'System' },
-                  { mode: 'light', icon: Sun, label: 'Light' },
-                  { mode: 'dark', icon: Moon, label: 'Dark' }
-                ].map(({ mode, icon: Icon, label }) => (
-                  <button
-                    key={mode}
-                    onClick={() => setThemeMode(mode as any)}
-                    className={`p-2.5 rounded-2xl flex flex-col items-center gap-1 text-xs font-semibold transition ${
-                      themeMode === mode ? 'bg-accent text-black font-bold' : 'bg-white/5 text-gray-300 hover:bg-white/10'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between text-xs text-gray-400 mb-1.5 font-semibold">
-                <span>CSS Variables</span>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(`:root {\n  --accent: #22E58B;\n  --bg-primary: #0a0e14;\n}`);
-                    setCopiedCSS(true);
-                    setTimeout(() => setCopiedCSS(false), 2000);
-                  }}
-                  className="flex items-center gap-1 text-accent hover:underline"
-                >
-                  {copiedCSS ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                  {copiedCSS ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-              <div className="p-3 bg-black/50 rounded-2xl text-[11px] font-mono text-gray-300 space-y-1">
-                <div><span className="text-accent">--accent:</span> #22E58B</div>
-                <div><span className="text-accent-secondary">--accent-sec:</span> #60A5FA</div>
-                <div><span className="text-gray-400">--bg-primary:</span> {themeMode === 'light' ? '#f8fafc' : '#0a0e14'}</div>
-                <div><span className="text-gray-400">--panel-bg:</span> rgba(18, 24, 32, 0.85)</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Build & IPA Pipeline Info Modal */}
-      {showBuildInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowBuildInfo(false)} />
-          <div className="relative w-full max-w-md locus-glass rounded-3xl p-5 border border-white/10 z-10 flex flex-col gap-4">
-            <div className="flex items-center justify-between pb-2 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <FolderGit2 className="w-5 h-5 text-accent-secondary" />
-                <h3 className="font-bold text-base">iOS IPA & Build Pipeline</h3>
-              </div>
-              <button onClick={() => setShowBuildInfo(false)} className="p-1 rounded-full hover:bg-white/10">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-gray-300 leading-relaxed">
-              The native iOS application with device-level DVT location spoofing is configured for automated unsigned IPA builds.
-            </p>
-
-            <div className="bg-black/50 p-3 rounded-2xl text-xs space-y-2 font-mono text-gray-300">
-              <div className="text-accent font-semibold">GitHub Actions Workflow:</div>
-              <div className="text-[11px] text-gray-400">.github/workflows/build.yml</div>
-              <div className="border-t border-white/10 pt-2 text-[11px]">
-                Target: <span className="text-white">LocusPlus-unsigned.ipa</span><br/>
-                Runner: <span className="text-white">macos-15 (Apple Silicon)</span><br/>
-                Target SDK: <span className="text-white">iOS 18.0+</span>
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex justify-between items-center">
+                <span>CoreDevice Tunnel</span>
+                <span className="text-cyan-400 font-semibold">Local Loopback (Port 58783)</span>
               </div>
             </div>
           </div>

@@ -27,7 +27,7 @@ struct SetupFlowView: View {
     }
 
     private var supportsOnDevicePairing: Bool {
-        if #available(iOS 27.0, *) { return true }
+        if #available(iOS 26.0, *) { return true }
         return false
     }
 

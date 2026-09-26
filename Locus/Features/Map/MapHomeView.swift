@@ -162,6 +162,7 @@ struct MapHomeView: View {
                 start: $routeStart,
                 end: $routeEnd,
                 isRouting: $isRouting,
+                routeCoords: routeCoords,
                 onBuild: buildRoadRoute,
                 onPlay: playRoute,
                 onImportGPX: { showGPXImporter = true },

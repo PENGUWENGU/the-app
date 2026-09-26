@@ -3,7 +3,7 @@ import Network
 
 /// Public-facing pairable-host listener.
 ///
-/// Uses Network.framework `NWListener` + Bonjour (what iOS 27 Developer Mode
+/// Uses Network.framework `NWListener` + Bonjour (what iOS 26+ Developer Mode
 /// browses). Inbound connections are relayed to the Rust pairable-host on
 /// 127.0.0.1 so accept() still completes while Settings is in the foreground.
 final class PairableHostAdvertiser {

@@ -16,7 +16,7 @@ public struct SettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private var supportsOnDevicePairing: Bool {
-        if #available(iOS 27.0, *) { return true }
+        if #available(iOS 26.0, *) { return true }
         return false
     }
 
@@ -189,7 +189,7 @@ public struct SettingsView: View {
                     Text("Developer pairing")
                 } footer: {
                     Text(supportsOnDevicePairing
-                         ? "On iOS 27, use Pair on this iPhone — no computer. Locus advertises a pairable host; confirm the 6-digit code under Settings › Privacy & Security › Developer Mode › Pair with Host. On older iOS, import an RPPairing file from idevice_pair (not a SideStore lockdown .mobiledevicepairing)."
+                         ? "On iOS 26+ (including iOS 26.6.1), use Pair on this iPhone — no computer. Locus advertises a pairable host; confirm the 6-digit code under Settings › Privacy & Security › Developer Mode › Pair with Host. On older iOS (iOS 18–25), import an RPPairing file from idevice_pair (not a SideStore lockdown .mobiledevicepairing)."
                          : "Import an RPPairing file from idevice_pair (not a SideStore lockdown .mobiledevicepairing). If the file picker fails (common in LiveContainer), enable Fix File Picker on the app, share the file into LiveContainer → Locus, or copy the plist and use Paste.")
                 }
 

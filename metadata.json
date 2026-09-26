@@ -1,6 +1,6 @@
 {
   "name": "Locus - iOS Location Simulator",
-  "description": "Interactive web simulator and preview for the Locus iOS location spoofing, joystick navigation, and GPX route playback application.",
+  "description": "Interactive simulator and build configuration for Locus, updated for iPhone 16e and iOS 26.6.1 with on-device pairing, joystick navigation, GPX routing, and native Liquid Glass styling.",
   "permissions": [],
   "capabilities": []
 }

@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 import UIKit
 
 /// Reliable pairing-file picker. SwiftUI `fileImporter` often shows `.plist` files
-/// that can’t be selected (especially inside sheets / on iOS 18–26).
+/// that can’t be selected (especially inside sheets / on iOS 18–25).
 struct PairingDocumentPicker: UIViewControllerRepresentable {
     var onPick: (URL) -> Void
     var onCancel: (() -> Void)?

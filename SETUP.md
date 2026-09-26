@@ -16,7 +16,7 @@ File pickers often break inside LiveContainer. Do one of the following:
 
 ## 2. Pairing
 
-### On iOS 27 — no computer
+### On iOS 26+ (iOS 26.6.1) — no computer
 
 1. Open Locus → **Settings → Pair on this iPhone** → **Start pairing**.
 2. Allow **Local Network** (and Location / Notifications if asked).
@@ -26,7 +26,7 @@ File pickers often break inside LiveContainer. Do one of the following:
 6. When the second prompt appears, type the **6-digit code** Locus shows (also sent as a notification).
 7. Done — RPPairing file is saved on-device.
 
-### On iOS 18–26
+### On iOS 18–25
 
 1. On a computer, download [idevice_pair](https://github.com/jkcoxson/idevice_pair/releases).
 2. Plug in your iPhone, unlock, Trust.
