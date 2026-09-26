@@ -117,12 +117,12 @@ public struct RouteETAResult: Equatable {
 // exactly the `[CLLocationCoordinate2D]` they already worked with — nothing about the
 // map/joystick/route-playback code needs to know this richer type exists.
 
-struct GPXTrackPoint: Equatable {
-    var coordinate: CLLocationCoordinate2D
-    var elevation: Double?
-    var time: Date?
+public struct GPXTrackPoint: Equatable {
+    public var coordinate: CLLocationCoordinate2D
+    public var elevation: Double?
+    public var time: Date?
 
-    init(coordinate: CLLocationCoordinate2D, elevation: Double? = nil, time: Date? = nil) {
+    public init(coordinate: CLLocationCoordinate2D, elevation: Double? = nil, time: Date? = nil) {
         self.coordinate = coordinate
         self.elevation = elevation
         self.time = time
@@ -136,21 +136,26 @@ struct GPXTrackPoint: Equatable {
     }
 }
 
-struct GPXTrack: Equatable {
-    var name: String?
-    var segments: [[GPXTrackPoint]]
+public struct GPXTrack: Equatable {
+    public var name: String?
+    public var segments: [[GPXTrackPoint]]
+
+    public init(name: String?, segments: [[GPXTrackPoint]]) {
+        self.name = name
+        self.segments = segments
+    }
 
     /// Flattened points across every segment, in order — the representation the rest of
     /// the app already uses for the map polyline and joystick/route playback.
-    var coordinates: [CLLocationCoordinate2D] {
+    public var coordinates: [CLLocationCoordinate2D] {
         segments.flatMap { $0.map(\.coordinate) }
     }
 
-    var allPoints: [GPXTrackPoint] {
+    public var allPoints: [GPXTrackPoint] {
         segments.flatMap { $0 }
     }
 
-    var isEmpty: Bool {
+    public var isEmpty: Bool {
         segments.allSatisfy { $0.isEmpty }
     }
 }
@@ -427,4 +432,3 @@ private func xmlEscape(_ value: String) -> String {
         .replacingOccurrences(of: "\"", with: "&quot;")
         .replacingOccurrences(of: "'", with: "&apos;")
 }
-
